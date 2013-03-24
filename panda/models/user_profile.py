@@ -1,16 +1,39 @@
 #!/user/bin/env python
 
-from django.contrib.auth.models import User
+import random
+import sha
+
+from django.conf import settings
 from django.db import models
+from django.utils.timezone import now
+from livesettings import config_value
+
+from panda.models.user_proxy import UserProxy
+from panda.utils.mail import send_mail
 
 class UserProfile(models.Model):
     """
     User metadata such as their activation key.
     """
-    user = models.OneToOneField(User)
+    user = models.OneToOneField(UserProxy)
 
-    activation_key = models.CharField(max_length=40)
+    activation_key = models.CharField(max_length=40, null=True, blank=True)
+    activation_key_expiration = models.DateTimeField()
+    show_login_help = models.BooleanField(default=True)
 
     class Meta:
         app_label = 'panda'
+
+    def generate_activation_key(self):
+        salt = sha.new(str(random.random())).hexdigest()[:5]
+        self.activation_key = sha.new(salt + self.user.username).hexdigest()
+        self.activation_key_expiration=now() + settings.PANDA_ACTIVATION_PERIOD
+
+    def send_activation_email(self):
+        email_subject = 'Welcome to PANDA, please activate your account!'
+        email_body = 'Hello there, the administrator of your organization\'s PANDA has signed you up for an account.\n\nTo activate your account, click this link:\n\nhttp://%s/#activate/%s' % (config_value('DOMAIN', 'SITE_DOMAIN'), self.activation_key)
+
+        send_mail(email_subject,
+                  email_body,
+                  [self.user.email])
 

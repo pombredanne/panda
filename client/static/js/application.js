@@ -8,6 +8,7 @@ PANDA.models = {};
 PANDA.views = {};
 PANDA.routers = {};
 PANDA.templates = {};
+PANDA.errors = {};
 PANDA.bootstrap = {};
 PANDA.utils = {};
 
@@ -15,9 +16,9 @@ PANDA.utils = {};
 // AKA: The simplest thing that works.
 // Mostly populated in index.html.
 PANDA.settings = {
+    CONTENT_ELEMENT: "#content",
     NOTIFICATIONS_INTERVAL: 20000,
-
-    MAX_UPLOAD_SIZE: 1024 * 1024 * 1024 // 1 GB
+    SLOW_QUERY_TIMEOUT: 10000
 };
 
 PANDA.utils.make_context = function(ctx) {
@@ -69,3 +70,18 @@ PANDA.utils.format_file_size = function(size) {
 
     return size.toFixed(1) + ' ' + units[i];
 }
+
+PANDA.utils.escapes_to_entities = function(escaped_text) {
+    return escaped_text.replace(/%(..)/g,"&#x$1;");
+};
+
+PANDA.utils.csrf_download = function(url) {
+    var iframe = $("<iframe />");
+    var form = $('<form action="' + url + '" method="POST"><input type="hidden" name="csrfmiddlewaretoken" value="' + $.cookie('csrftoken') + '" /></form>');
+
+    $("body").append(iframe);
+    iframe.append(form);
+    form.submit();
+    iframe.remove();
+};
+

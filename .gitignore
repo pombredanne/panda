@@ -10,3 +10,10 @@ media
 .settings
 docs/_build
 beta_settings.py
+local_settings.py
+coverage_html
+.coverage
+celerybeat-schedule.db
+_site
+*.bak
+apache-solr-3.4.0

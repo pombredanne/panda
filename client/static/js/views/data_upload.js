@@ -13,18 +13,23 @@ CustomUploadButton = {
 }
 
 PANDA.views.DataUpload = Backbone.View.extend({
-    el: $("#content"),
-
     events: {
         "click #upload-begin":         "begin_event",
         "click #upload-continue":      "continue_event",
-        "click #upload-start-over":    "start_over_event"
+        "click #upload-finish":        "finish_event",
+        "click #upload-start-over":    "start_over_event",
+        "click #step-1-start-over":    "start_over_event",
+        "click #step-2-start-over":    "start_over_event",
+        "click #step-3-start-over":    "start_over_event"
     },
     
     file_uploader: null,
     dataset: null,
     upload: null,
     dataset_is_new: false,
+    available_space: null,
+
+    allowed_extensions: ["csv", "xls", "xlsx"],
 
     initialize: function() {
         _.bindAll(this);
@@ -33,6 +38,19 @@ PANDA.views.DataUpload = Backbone.View.extend({
     reset: function(dataset_slug) {
         this.file_uploader = null;
         this.upload = null;
+
+        Redd.ajax({
+            url: '/check_available_space/',
+            dataType: 'json',
+            type: 'GET',
+            async: false,
+            success: _.bind(function(data, status, xhr) {
+                this.available_space = $.parseJSON(xhr.responseText);
+            }, this),
+            error: _.bind(function(xhr, status, error) {
+                this.available_space = null;
+            }, this)
+        }); 
 
         if (dataset_slug) {
             this.dataset_is_new = false;
@@ -60,21 +78,29 @@ PANDA.views.DataUpload = Backbone.View.extend({
 
     render: function() {
         if (this.dataset) {
-            dataset_json = this.dataset.toJSON();
+            var dataset_json = this.dataset.toJSON();
         } else {
-            dataset_json = null;
+            var dataset_json = null;
         }
 
-        var context = PANDA.utils.make_context({ dataset: dataset_json });
+        var all_categories = _.reject(Redd.get_categories().toJSON(), function(c) {
+            return (c.id == PANDA.settings.UNCATEGORIZED_ID);
+        });
 
-        this.el.html(PANDA.templates.data_upload(context));
+        var context = PANDA.utils.make_context({
+            dataset: dataset_json,
+            available_space: this.available_space,
+            all_categories:  all_categories
+        });
+
+        this.$el.html(PANDA.templates.data_upload(context));
         
         $('a[rel="popover"]').popover();
 
         this.file_uploader = new qq.FileUploaderBasic({
             action: "/data_upload/",
             multiple: false,
-            allowedExtensions: ["csv", "xls", "xlsx"],
+            allowedExtensions: this.allowed_extensions,
             onSubmit: this.on_submit,
             onProgress: this.on_progress,
             onComplete: this.on_complete,
@@ -97,21 +123,22 @@ PANDA.views.DataUpload = Backbone.View.extend({
 
     on_file_selected: function() {
         var filename = $("#upload-file").val();
+        var filepath_parts = $("#upload-file").val().split("\\");
+        var filename = filepath_parts[filepath_parts.length - 1];
         var ext = filename.substr(filename.lastIndexOf('.') + 1);
+        var no_ext = filename.substr(0, filename.lastIndexOf('.'));
+        
+        $("#dataset-name").val(no_ext);
 
-        if (ext == 'xls' || ext == 'xlsx') {
-            $("#step-1 .notes.xls").show();
-        } else {
-            $("#step-1 .notes.xls").hide();
-        }
+        var known_extensions = ['csv', 'xls', 'xlsx', 'mdb', 'access', 'dbf'];
 
-        if (ext == 'csv') {
-            $(".csv-options").show();
-        } else {
-            $(".csv-options").hide();
-        }
+        $(".csv-options").toggle(ext == 'csv');
+        $("#step-1 .notes.xls").toggle(ext == 'xls' || ext == 'xlsx');
+        $("#step-1 .notes.access").toggle(ext == 'mdb' || ext == 'access');
+        $("#step-1 .notes.dbf").toggle(ext == 'dbf');
 
-        $("#upload-begin").removeAttr("disabled");
+        $("#upload-begin").attr("disabled", _.indexOf(this.allowed_extensions, ext) >= 0 ? false : true);
+        $("#step-1 .notes.other").toggle(_.indexOf(known_extensions, ext) >= 0 ? false : true);
     },
 
     on_submit: function(id, fileName) {
@@ -134,6 +161,8 @@ PANDA.views.DataUpload = Backbone.View.extend({
     on_progress: function(id, fileName, loaded, total) {
         /*
          * Handler for when a file upload reports its progress.
+         *
+         * NB: This never files in IE and older FF due to the lack of XHR support.
          */
         var pct = Math.floor(loaded / total * 100);
 
@@ -149,85 +178,67 @@ PANDA.views.DataUpload = Backbone.View.extend({
             this.upload = new PANDA.models.DataUpload(responseJSON);
 
             // Verify headers match
-            if (this.dataset && this.dataset.get("columns")) {
-                if (!this.upload.get("columns").equals(this.dataset.get("columns"))) {
+            if (this.dataset && this.dataset.get("column_schema")) {
+                if (!this.upload.get("columns").equals(_.pluck(this.dataset.get("column_schema"), "name"))) {
                     this.step_two_error_message("The columns headers in this file do not match those of the existing data.");
                     return;
                 }
             }
 
-            this.step_three();
+            $("#step-2 .ie-progress strong").text("Upload complete!");
+            $("#upload-continue").removeAttr("disabled");
         } else if (responseJSON.forbidden) {
             Redd.goto_login(window.location.hash);
-        } else {
+        } else if (responseJSON.error_message) {
             this.step_two_error_message(responseJSON.error_message);
+        } else if (responseJSON.xhr) {
+            this.step_two_error_message(responseJSON.xhr.status + ' ' + responseJSON.xhr.statusText);
+        } else {
+            this.step_two_error_message('An unexpected error occurred.');
         }
     },
 
     step_one_error_message: function(message) {
-        $("#upload-file").attr("disabled", true);
         $("#step-1-alert").alert("alert-error", message + ' <input id="step-1-start-over" type="button" class="btn" value="Try again" />' , false);
-        $("#step-1-start-over").click(this.start_over_event);
     },
 
     step_two_error_message: function(message) {
         $("#step-2-alert").alert("alert-error", message + ' <input id="step-2-start-over" type="button" class="btn" value="Try again" />' , false);
-        $("#step-2-start-over").click(this.start_over_event);
     },
 
     step_three_error_message: function(message) {
         $("#step-3-alert").alert("alert-error", message + ' <input id="step-3-start-over" type="button" class="btn" value="Try again" />' , false);
-        $("#step-3-start-over").click(this.start_over_event);
     },
 
     step_one: function() {
         $(".alert").hide();
-        $("#step-2").addClass("disabled");
-        $("#step-2 .progress-bar").hide();
         this.on_progress(null, null, 0, 1);
-        $("#step-3 .sample-data").hide();
-        $("#step-3 .sample-data").empty();
-        $("#step-3").addClass("disabled");
-        $("#upload-continue").attr("disabled", true);
-        $("#upload-start-over").attr("disabled", true);
         
         $("#step-1 .notes.xls").hide();
         $(".csv-options").hide();
-        $("#upload-encoding").attr("disabled", false);
-        $("#upload-file").attr("disabled", false);
-        $("#upload-begin").attr("disabled", false);
-        $("#step-1").removeClass("disabled");
-
-        $("#step-3").removeClass("well");
-        $("#step-1").addClass("well");
     },
 
     step_two: function() {
-        $("#upload-encoding").attr("disabled", true);
-        $("#upload-begin").attr("disabled", true);
-        $("#step-1").addClass("disabled");
-        $("#upload-file").attr("disabled", true);
-        
-        $("#step-2 .progress-bar").show();
-        $("#step-2").removeClass("disabled");
-        
-        $("#step-1").removeClass("well");
-        $("#step-2").addClass("well");
+        $("#upload-continue").attr("disabled", true);
+        $("#dataset-name").focus();
+        $("#step-2").collapse({ toggle: true, parent: "#steps" });
+
+        // Use fileuploader's Ajax support detection to determine
+        // if we can render a progress bar
+        if (!qq.UploadHandlerXhr.isSupported()) {
+            $("#step-2 .progress-bar").hide();
+            $("#step-2 .ie-progress").show();
+        }
     },
 
     step_three: function() {
-        $("#step-2").addClass("disabled");
-
         sample_data_html = PANDA.templates.inline_sample_data(this.upload.toJSON()); 
         $("#step-3 .sample-data").html(sample_data_html);
-        $("#step-3 .sample-data").show();
 
-        $("#step-3").removeClass("disabled");
-        $("#upload-continue").attr("disabled", false);
-        $("#upload-start-over").attr("disabled", false);
-        
-        $("#step-2").removeClass("well");
-        $("#step-3").addClass("well");
+        $("#upload-finish").removeAttr("disabled");
+        $("#upload-start-over").removeAttr("disabled");
+
+        $("#step-3").collapse({ toggle: true, parent: "#steps" });
     },
 
     begin_event: function() {
@@ -236,30 +247,46 @@ PANDA.views.DataUpload = Backbone.View.extend({
     },
 
     continue_event: function() {
-        // Prevent double-clicks
-        $("#upload-continue").attr("disabled", true);
+        this.step_three();
+    },
+
+    finish_event: function() {
+        $("#upload-finish").attr("disabled", true);
         $("#upload-start-over").attr("disabled", true);
 
-        fileName = this.upload.get("original_filename");
+        var fileName = this.upload.get("original_filename");
+
+        var categories = $("#dataset-details-form").serializeObject().categories || new Array();
+
+        // If only a single category is selected it will serialize as a string instead of a list
+        if (!_.isArray(categories)) {
+            categories = [categories];
+        }
+
+        categories = _.map(categories, function(cat) {
+            return Redd.get_category_by_slug(cat).clone();
+        });
 
         if (!this.dataset) {
             this.dataset = new PANDA.models.Dataset({
-                name: fileName.substr(0, fileName.lastIndexOf('.')) || fileName
+                name: $("#dataset-name").val() || fileName.substr(0, fileName.lastIndexOf('.')) || fileName,
+                description: $("#dataset-description").val(),
+                categories: categories
             });
             
             this.dataset.save({}, { async: false });
         }
 
         this.dataset.data_uploads.add(this.upload);
-        this.dataset.patch({}, { async: false })
+        this.dataset.patch()
 
         // Begin import, runs synchronously so errors may be caught immediately
         this.dataset.import_data(
             this.upload.get("id"),
-            _.bind(function() {
-                    Redd.goto_dataset_view(this.dataset.get("slug"));
-            }, this),
-            _.bind(function(error) {
+            function(dataset) {
+                Redd.goto_dataset_view(dataset.get("slug"));
+            },
+            _.bind(function(dataset, error) {
                 // Preemptive import errors (mismatched columns, etc.)
                 this.upload.destroy()
                 this.step_three_error_message(error.error_message);
@@ -268,8 +295,7 @@ PANDA.views.DataUpload = Backbone.View.extend({
     },
 
     start_over_event: function() {
-        // Prevent double-clicks
-        $("#upload-continue").attr("disabled", true);
+        $("#upload-finish").attr("disabled", true);
         $("#upload-start-over").attr("disabled", true);
 
         if (this.upload) {

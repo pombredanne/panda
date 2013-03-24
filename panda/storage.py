@@ -7,7 +7,7 @@ from ajaxuploader.backends.base import AbstractUploadBackend
 from django.conf import settings
 
 from panda.api import DataUploadResource, RelatedUploadResource, UserResource
-from panda.models import Dataset, DataUpload, RelatedUpload
+from panda.models import Dataset, DataUpload, RelatedUpload, UserProxy
 
 class PANDAAbstractUploadBackend(AbstractUploadBackend):
     """
@@ -66,46 +66,54 @@ class PANDADataUploadBackend(PANDAAbstractUploadBackend):
         """
         Create a DataUpload object.
         """
-        super(PANDADataUploadBackend, self).upload_complete(request, filename)
+        try:
+            super(PANDADataUploadBackend, self).upload_complete(request, filename)
 
-        root, ext = os.path.splitext(filename)
-        path = os.path.join(settings.MEDIA_ROOT, filename)
-        size = os.path.getsize(path)
+            root, ext = os.path.splitext(filename)
+            path = os.path.join(settings.MEDIA_ROOT, filename)
+            size = os.path.getsize(path)
 
-        if 'dataset_slug' in request.REQUEST:
-            dataset = Dataset.objects.get(slug=request.REQUEST['dataset_slug'])
-        else:
-            dataset = None
+            if 'dataset_slug' in request.REQUEST:
+                dataset = Dataset.objects.get(slug=request.REQUEST['dataset_slug'])
+            else:
+                dataset = None
 
-        encoding = request.REQUEST.get('encoding', 'utf-8')
+            encoding = request.REQUEST.get('encoding', 'utf-8')
 
-        if not encoding:
-            encoding = 'utf-8'
+            if not encoding:
+                encoding = 'utf-8'
 
-        upload = DataUpload.objects.create(
-            filename=filename,
-            original_filename=self._original_filename,
-            size=size,
-            creator=request.user,
-            dataset=dataset,
-            encoding=encoding)
+            # Because users may have authenticated via headers the request.user may
+            # not be a full User instance. To be sure, we fetch one.
+            creator = UserProxy.objects.get(id=request.user.id)
 
-        if dataset:
-            dataset.update_full_text()
+            upload = DataUpload.objects.create(
+                filename=filename,
+                original_filename=self._original_filename,
+                size=size,
+                creator=creator,
+                dataset=dataset,
+                encoding=encoding)
 
-        resource = DataUploadResource()
-        bundle = resource.build_bundle(obj=upload, request=request)
-        data = resource.full_dehydrate(bundle).data
+            if dataset:
+                dataset.update_full_text()
 
-        # django-ajax-upoader does not use the Tastypie serializer
-        # so we must 'manually' serialize the embedded resource bundle
-        resource = UserResource()
-        bundle = data['creator']
-        user_data = resource.full_dehydrate(bundle).data
+            resource = DataUploadResource()
+            bundle = resource.build_bundle(obj=upload, request=request)
+            data = resource.full_dehydrate(bundle).data
 
-        data['creator'] = user_data
+            # django-ajax-upoader does not use the Tastypie serializer
+            # so we must 'manually' serialize the embedded resource bundle
+            resource = UserResource()
+            bundle = data['creator']
+            user_data = resource.full_dehydrate(bundle).data
 
-        return data
+            data['creator'] = user_data
+        except Exception, e:
+            # This global error handler is a kludge to ensure IE8 can properly handle the responses
+            return { 'error_message': e.message, 'success': False }
+
+        return data 
 
 class PANDARelatedUploadBackend(PANDAAbstractUploadBackend):
     """
@@ -115,34 +123,42 @@ class PANDARelatedUploadBackend(PANDAAbstractUploadBackend):
         """
         Create a RelatedUpload object.
         """
-        super(PANDARelatedUploadBackend, self).upload_complete(request, filename)
+        try:
+            super(PANDARelatedUploadBackend, self).upload_complete(request, filename)
 
-        root, ext = os.path.splitext(filename)
-        path = os.path.join(settings.MEDIA_ROOT, filename)
-        size = os.path.getsize(path)
+            root, ext = os.path.splitext(filename)
+            path = os.path.join(settings.MEDIA_ROOT, filename)
+            size = os.path.getsize(path)
 
-        dataset = Dataset.objects.get(slug=request.REQUEST['dataset_slug'])
+            dataset = Dataset.objects.get(slug=request.REQUEST['dataset_slug'])
 
-        upload = RelatedUpload.objects.create(
-            filename=filename,
-            original_filename=self._original_filename,
-            size=size,
-            creator=request.user,
-            dataset=dataset)
+            # Because users may have authenticated via headers the request.user may
+            # not be a full User instance. To be sure, we fetch one.
+            creator = UserProxy.objects.get(id=request.user.id)
 
-        dataset.update_full_text()
+            upload = RelatedUpload.objects.create(
+                filename=filename,
+                original_filename=self._original_filename,
+                size=size,
+                creator=creator,
+                dataset=dataset)
 
-        resource = RelatedUploadResource()
-        bundle = resource.build_bundle(obj=upload, request=request)
-        data = resource.full_dehydrate(bundle).data
+            dataset.update_full_text()
 
-        # django-ajax-upoader does not use the Tastypie serializer
-        # so we must 'manually' serialize the embedded resource bundle
-        resource = UserResource()
-        bundle = data['creator']
-        user_data = resource.full_dehydrate(bundle).data
+            resource = RelatedUploadResource()
+            bundle = resource.build_bundle(obj=upload, request=request)
+            data = resource.full_dehydrate(bundle).data
 
-        data['creator'] = user_data
+            # django-ajax-upoader does not use the Tastypie serializer
+            # so we must 'manually' serialize the embedded resource bundle
+            resource = UserResource()
+            bundle = data['creator']
+            user_data = resource.full_dehydrate(bundle).data
+
+            data['creator'] = user_data
+        except Exception, e:
+            # This global error handler is a kludge to ensure IE8 can properly handle the responses
+            return { 'error_message': e.message, 'success': False }
 
         return data
 

@@ -4,7 +4,7 @@ from django.conf import settings
 from django.db.models import Count
 from tastypie.authorization import DjangoAuthorization
 
-from panda.api.utils import PandaApiKeyAuthentication, SluggedModelResource, PandaSerializer
+from panda.api.utils import PandaAuthentication, SluggedModelResource, PandaSerializer
 from panda.models import Category, Dataset
 
 class CategoryResource(SluggedModelResource):
@@ -16,7 +16,7 @@ class CategoryResource(SluggedModelResource):
         resource_name = 'category'
         allowed_methods = ['get']
 
-        authentication = PandaApiKeyAuthentication()
+        authentication = PandaAuthentication()
         authorization = DjangoAuthorization()
         serializer = PandaSerializer()
 
@@ -61,3 +61,4 @@ class CategoryResource(SluggedModelResource):
         to_be_serialized = self.alter_list_data_to_serialize(request, to_be_serialized)
 
         return self.create_response(request, to_be_serialized)
+

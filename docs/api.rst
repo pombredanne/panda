@@ -9,16 +9,20 @@ The PANDA API follows the conventions of `Tastypie <https://github.com/toastdriv
 
 .. note::
 
-    You will probably want to try these URLs in your browser. In order to make them work you'll need to use the ``format``, ``email``, and ``api_key`` query string parameters. For example, to authenticate as the default administrative user that comes with PANDA, append the following query string to any url described on this page::
+    You will probably want to try these URLs in your browser. In order to make them work you'll need to use the ``format``, ``email``, and ``api_key`` query string parameters. For example, if you had a user named panda@pandaproject.net you might append the following query string to any url described on this page::
 
         ?format=json&email=panda@pandaproject.net&api_key=edfe6c5ffd1be4d3bf22f69188ac6bc0fc04c84b
 
-All endpoints that return lists support the ``limit`` and ``offset`` parameters for pagination. Pagination information is always returned in the embedded ``meta`` object.
+Unless otherwise specified, all endpoints that return lists support the ``limit`` and ``offset`` parameters for pagination. Pagination information is contained in the embedded ``meta`` object within the response.
 
 Users
 =====
 
-User objects can be queried to retrieve information about PANDA users, however, passwords and API keys are not included in responses.
+User objects can be queried to retrieve information about PANDA users. Passwords and API keys are not included in responses.
+
+.. warning::
+
+    If accessing the API with normal user credentials you will only be allowed to fetch/list users and to update your own data. Superusers can update any user, as well as delete existing users and create new ones. 
 
 Example User object:
 
@@ -40,31 +44,54 @@ Schema
 
 ::
 
-    http://localhost:8000/api/1.0/user/schema/
+    GET http://localhost:8000/api/1.0/user/schema/
 
 List
 ----
 
 ::
 
-    http://localhost:8000/api/1.0/user/
+    GET http://localhost:8000/api/1.0/user/
 
 Fetch
 -----
 
 ::
 
-    http://localhost:8000/api/1.0/user/[id]/
+    GET http://localhost:8000/api/1.0/user/[id]/
 
 Create
 ------
 
-To create a new user, POST a JSON document containing at least ``username`` and ``email`` properties to http://localhost:8000/api/1.0/user/. Other properties such as ``first_name`` and ``last_name`` may also be set. If a ``password`` property is specified it will be set on the new user, but it will not be included in the response. If ``password`` is omitted the user will need to set a password before they can log in (not yet implemented).
+New users are created by POSTing a JSON document containing at least the ``email`` property to the user endpoint. Other properties such as ``first_name`` and ``last_name`` may also be set. If a ``password`` property is specified it will be set on the new user, but it will not be included in the response. If ``password`` is omitted and email is enabled the new user will be sent an activation email.
+
+::
+
+    POST http://localhost:8000/api/1.0/user/
+
+    {
+        "email": "test@test.com",
+        "first_name": "John",
+        "last_name": "Doe"
+    }
+
+Update
+------
+
+PANDA supports updating users via a simulated PATCH verb. To update a user PUT to the user's URL, with ``patch`` as a query string parameter. In the body of your request include only those attributes of the user you want to change.
+
+::
+
+    PUT http://localhost:8000/api/1.0/user/[id]/?patch=true
+
+    {
+        "last_name": "My New Last Name"
+    }
 
 Tasks
 =====
 
-The Task API is read-only.
+The Task API allows you to access data about asynchronous processes running on PANDA. This data is read-only.
 
 Example Task object:
 
@@ -86,25 +113,25 @@ Schema
 
 ::
 
-    http://localhost:8000/api/1.0/task/schema/
+    GET http://localhost:8000/api/1.0/task/schema/
 
 List
 ----
 
 ::
 
-    http://localhost:8000/api/1.0/task/
+    GET http://localhost:8000/api/1.0/task/
 
 List filtered by status 
 -----------------------
 
 List tasks that are PENDING (queued, but have not yet started processing)::
 
-    http://localhost:8000/api/1.0/task/?status=PENDING
+    GET http://localhost:8000/api/1.0/task/?status=PENDING
 
 .. note::
 
-    Possible task statuses are ``PENDING``, ``STARTED``, ``SUCCESS``, and ``FAILURE``.
+    Possible task statuses are ``PENDING``, ``STARTED``, ``SUCCESS``, ``FAILURE``, ``ABORT REQUESTED`` and ``ABORTED``.
 
 
 List filtered by date
@@ -112,14 +139,14 @@ List filtered by date
 
 List tasks that ended on October 31st, 2011::
 
-    http://localhost:8000/api/1.0/task/?end__year=2011&end__month=10&end__day=31
+    GET http://localhost:8000/api/1.0/task/?end__year=2011&end__month=10&end__day=31
 
 Fetch
 -----
 
 ::
 
-    http://localhost:8000/api/1.0/task/[id]/
+    GET http://localhost:8000/api/1.0/task/[id]/
 
 Data Uploads
 ============
@@ -153,14 +180,14 @@ Example DataUpload object:
         dialect: {
             delimiter: ",",
             doublequote: false,
-            lineterminator: "
-            ",
-            quotechar: """,
+            lineterminator: "\r\n",
+            quotechar: "\"",
             quoting: 0,
             skipinitialspace: false
         },
         encoding: "utf-8",
         filename: "contributors.csv",
+        "guessed_types": ["int", "unicode", "unicode", "unicode"],
         id: "1",
         imported: true,
         original_filename: "contributors.csv",
@@ -191,7 +218,8 @@ Example DataUpload object:
                 "PANDA Project"
             ]
         ],
-        size: 168
+        size: 168,
+        title: "PANDA Project Contributors"
     }
 
 Schema
@@ -199,53 +227,58 @@ Schema
 
 ::
 
-    http://localhost:8000/api/1.0/data_upload/schema/
+    GET http://localhost:8000/api/1.0/data_upload/schema/
 
 List
 ----
 
 ::
 
-    http://localhost:8000/api/1.0/data_upload/
+    GET http://localhost:8000/api/1.0/data_upload/
 
 Fetch
 -----
 
 ::
 
-    http://localhost:8000/api/1.0/data_upload/[id]/
+    GET http://localhost:8000/api/1.0/data_upload/[id]/
 
 Download original file
 ----------------------
 
 ::
 
-    http://localhost:8000/api/1.0/data_upload/[id]/download/
+    GET http://localhost:8000/api/1.0/data_upload/[id]/download/
 
 Upload as form-data
 -------------------
 
 When accessing PANDA via curl, your email and API key can be specified with the headers ``PANDA_EMAIL`` and ``PANDA_API_KEY``, respectively::
 
-    curl -H "PANDA_EMAIL: panda" -H "PANDA_API_KEY: edfe6c5ffd1be4d3bf22f69188ac6bc0fc04c84b" \
-    -F file=@README.csv http://localhost:8000/data_upload/
+    curl -H "PANDA_EMAIL: panda@pandaproject.net" -H "PANDA_API_KEY: edfe6c5ffd1be4d3bf22f69188ac6bc0fc04c84b" \
+    -F file=@test.csv http://localhost:8000/data_upload/
 
 Upload via AJAX
 ---------------
 
 ::
 
-    curl -H "PANDA_EMAIL: panda" -H "PANDA_API_KEY: edfe6c5ffd1be4d3bf22f69188ac6bc0fc04c84b" \
+    curl -H "PANDA_EMAIL: panda@pandaproject.net" -H "PANDA_API_KEY: edfe6c5ffd1be4d3bf22f69188ac6bc0fc04c84b" \
     --data-binary @test.csv -H "X-Requested-With:XMLHttpRequest" http://localhost:8000/data_upload/?qqfile=test.csv
 
 .. note::
 
     When using either upload method you may specify the character encoding of the file by passing it as a parameter, e.g. ``?encoding=latin1``
 
+Update
+------
+
+Data uploads may be updated by PUTing new data to the object's endpoint. However, only the ``title`` field is writeable. All other fields are read-only.
+
 Related Uploads
 ===============
 
-Due to limitations in upload file-handling, it is not possible to create Uploads via the normal API. Instead related files should be uploaded to http://localhost:8000/related_upload/ either as form data or as an AJAX request. Examples of how to upload files with curl are at the end of this section.
+As with Data Uploads, it is not possible to create Uploads via the normal API. Instead related files should be uploaded to http://localhost:8000/related_upload/ either as form data or as an AJAX request. Examples of how to upload files with curl are at the end of this section.
 
 Example RelatedUpload object:
 
@@ -268,7 +301,8 @@ Example RelatedUpload object:
         id: "1",
         original_filename: "PANDA.1.png",
         resource_uri: "/api/1.0/related_upload/1/",
-        size: 58990
+        size: 58990,
+        title: "PANDA Logo"
     }
 
 Schema
@@ -276,49 +310,54 @@ Schema
 
 ::
 
-    http://localhost:8000/api/1.0/related_upload/schema/
+    GET http://localhost:8000/api/1.0/related_upload/schema/
 
 List
 ----
 
 ::
 
-    http://localhost:8000/api/1.0/related_upload/
+    GET http://localhost:8000/api/1.0/related_upload/
 
 Fetch
 -----
 
 ::
 
-    http://localhost:8000/api/1.0/related_upload/[id]/
+    GET http://localhost:8000/api/1.0/related_upload/[id]/
 
 Download original file
 ----------------------
 
 ::
 
-    http://localhost:8000/api/1.0/related_upload/[id]/download/
+    GET http://localhost:8000/api/1.0/related_upload/[id]/download/
 
 Upload as form-data
 -------------------
 
 When accessing PANDA via curl, your email and API key can be specified with the headers ``PANDA_EMAIL`` and ``PANDA_API_KEY``, respectively::
 
-    curl -H "PANDA_EMAIL: panda" -H "PANDA_API_KEY: edfe6c5ffd1be4d3bf22f69188ac6bc0fc04c84b" \
-    -F file=@README.csv http://localhost:8000/related_upload/
+    curl -H "PANDA_EMAIL: panda@pandaproject.net" -H "PANDA_API_KEY: edfe6c5ffd1be4d3bf22f69188ac6bc0fc04c84b" \
+    -F file=@README.txt http://localhost:8000/related_upload/
 
 Upload via AJAX
 ---------------
 
 ::
 
-    curl -H "PANDA_EMAIL: panda" -H "PANDA_API_KEY: edfe6c5ffd1be4d3bf22f69188ac6bc0fc04c84b" \
-    --data-binary @test.csv -H "X-Requested-With:XMLHttpRequest" http://localhost:8000/related_upload/?qqfile=test.csv
+    curl -H "PANDA_EMAIL: panda@pandaproject.net" -H "PANDA_API_KEY: edfe6c5ffd1be4d3bf22f69188ac6bc0fc04c84b" \
+    --data-binary @README.txt -H "X-Requested-With:XMLHttpRequest" http://localhost:8000/related_upload/?qqfile=test.csv
+
+Update
+------
+
+Related uploads may be updated by PUTing new data to the object's endpoint. However, only the ``title`` field is writeable. All other fields are read-only.
 
 Categories
 ==========
 
-Categories are identified by slug, rather than by integer id (though they do have one).
+Categories are referenced by slug, rather than by integer id (though they do have one).
 
 Example Category object:
 
@@ -342,7 +381,7 @@ Schema
 List
 ----
 
-When queried as a list, a "fake" category named "Uncategorized" will also be returned. This category includes the count of all Datasets not in any other category. It's slug is ``uncategorized`` is 0, but it can only be accessed as a part of the list.
+When queried as a list, a "fake" category named "Uncategorized" will also be returned. This category includes the count of all Datasets not in any other category. It's slug is ``uncategorized`` and its id is 0, but it can only be accessed as a part of the list.
 
 ::
 
@@ -355,10 +394,57 @@ Fetch
 
     http://localhost:8000/api/1.0/category/[slug]/
 
+Exports
+=======
+
+Example Export object:
+
+.. code-block:: javascript
+
+    {
+        creation_date: "2012-07-12T14:38:00",
+        creator: "/api/1.0/user/2/",
+        dataset: null,
+        filename: "search_export_2012-07-12T14:38:00.078677+00:00.zip",
+        id: "1",
+        original_filename: "search_export_2012-07-12T14:38:00.078677+00:00.zip",
+        resource_uri: "/api/1.0/export/1/",
+        size: 287,
+        title: "search_export_2012-07-12T14:38:00.078677+00:00.zip"
+    }
+
+Schema
+------
+
+::
+
+    http://localhost:8000/api/1.0/export/schema/
+
+List
+----
+
+::
+
+    http://localhost:8000/api/1.0/export/
+
+Fetch
+-----
+
+::
+
+    http://localhost:8000/api/1.0/export/[id]/
+
+Download
+--------
+
+::
+
+    http://localhost:8000/api/1.0/export/[id]/download/
+
 Datasets
 ========
 
-Datasets are identified by slug, rather than by integer id (though they do have one).
+Dataset is the core object in PANDA and by far the most complicated. It contains several embedded objects describing the columns of the dataset, the user that created it, the related uploads, etc. It also contains information about the history of the dataset and whether or not it is currently locked (unable to be modified). Datasets are referenced by slug, rather than by integer id (though they do have one).
 
 Example Dataset object:
 
@@ -366,11 +452,31 @@ Example Dataset object:
 
     {
         categories: [ ],
-        columns: [
-            "id",
-            "first_name",
-            "last_name",
-            "employer"
+        column_schema: [
+            {
+                indexed: false,
+                indexed_name: null,
+                max: null,
+                min: null,
+                name: "first_name",
+                type: "unicode"
+            },
+            {
+                indexed: false,
+                indexed_name: null,
+                max: null,
+                min: null,
+                name: "last_name",
+                type: "unicode"
+            },
+            {
+                indexed: false,
+                indexed_name: null,
+                max: null,
+                min: null,
+                name: "employer",
+                type: "unicode"
+            }
         ],
         creation_date: "2012-02-08T17:50:11",
         creator: {
@@ -397,7 +503,6 @@ Example Dataset object:
         data_uploads: [
             {
                 columns: [
-                    "id",
                     "first_name",
                     "last_name",
                     "employer"
@@ -432,31 +537,28 @@ Example Dataset object:
                 resource_uri: "/api/1.0/data_upload/1/",
                 sample_data: [
                     [
-                        "1",
                         "Brian",
                         "Boyer",
                         "Chicago Tribune"
                     ],
                     [
-                        "2",
                         "Joseph",
                         "Germuska",
                         "Chicago Tribune"
                     ],
                     [
-                        "3",
                         "Ryan",
                         "Pitts",
                         "The Spokesman-Review"
                     ],
                     [
-                        "4",
                         "Christopher",
                         "Groskopf",
                         "PANDA Project"
                     ]
                 ],
-                size: 168
+                size: 168,
+                title: "Contributors"
             }
         ],
         description: "",
@@ -465,31 +567,29 @@ Example Dataset object:
         last_modification: null,
         last_modified: null,
         last_modified_by: null,
+        locked: false,
+        locked_at: "2012-03-29T14:28:02",
         name: "contributors",
         related_uploads: [ ],
         resource_uri: "/api/1.0/dataset/contributors/",
         row_count: 4,
         sample_data: [
             [
-                "1",
                 "Brian",
                 "Boyer",
                 "Chicago Tribune"
             ],
             [
-                "2",
                 "Joseph",
                 "Germuska",
                 "Chicago Tribune"
             ],
             [
-                "3",
                 "Ryan",
                 "Pitts",
                 "The Spokesman-Review"
             ],
             [
-                "4",
                 "Christopher",
                 "Groskopf",
                 "PANDA Project"
@@ -503,21 +603,30 @@ Schema
 
 ::
 
-    http://localhost:8000/api/1.0/dataset/schema/
+    GET http://localhost:8000/api/1.0/dataset/schema/
 
 List
 ----
 
 ::
     
-    http://localhost:8000/api/1.0/dataset/
+    GET http://localhost:8000/api/1.0/dataset/
 
 List filtered by category
 -------------------------
 
 ::
 
-    http://localhost:8000/api/1.0/dataset/?category=[slug]
+    GET http://localhost:8000/api/1.0/dataset/?category=[slug]
+
+List filtered by user
+---------------------
+
+A shortcut is provided for listing datasets created by a specific user. Simply pass the ``creator_email`` parameter. Note that this paramter can not be combined with a search query or other filter.
+
+::
+
+    GET http://localhost:8000/api/1.0/dataset/?creator_email=[email]
 
 Search for datasets
 -------------------
@@ -526,47 +635,74 @@ The Dataset list endpoint also provides full-text search over datasets' metadata
 
 .. note::
 
-    By default search results are complete Dataset objects, however, it's frequently useful to return simplified objects for rendering lists, etc. To return simplified objects just add ``simple=true`` to the query.
+    By default search results are complete Dataset objects, however, it's frequently useful to return simplified objects for rendering lists, etc. These simple objects do not contain the embedded task object, upload objects or sample data. To return simplified objects just add ``simple=true`` to the query.
 
 ::
 
-    http://localhost:8000/api/1.0/dataset/?q=[query]
+    GET http://localhost:8000/api/1.0/dataset/?q=[query]
 
 Fetch
 -----
 
 ::
 
-    http://localhost:8000/api/1.0/dataset/[slug]/
+    GET http://localhost:8000/api/1.0/dataset/[slug]/
 
 Create
 ------
 
-To create a new Dataset, ``POST`` a JSON document containing at least ``name`` and ``data_upload`` properties to ``/api/1.0/dataset/``. The ``data_upload`` property may be either an embedded Upload object, or a URI to an existing Upload (for example, ``/api/1.0/upload/17/``). Other properties such as ``description`` may also be set.
+To create a new Dataset, POST a JSON document containing at least a ``name`` property to the dataset endpoint. Other properties such as ``description`` may also be included.
 
-.. note::
+::
 
-    The slug field is normally read-only. If you need to create a Dataset with a "well known" slug, you may ``PUT`` the document to that slug and it will be created.
-    
-    For example, if I wanted to create a dataset that I knew would be accessible at ``/api/1.0/dataset/my-slug/``, I could ``PUT`` my JSON document to that URL and it would be created. If a document with this slug already exists it will be overwritten!
+    POST http://localhost:8000/api/1.0/dataset/
+
+    {
+        "title": "My new dataset",
+        "description": "Lets fill this with new data!"
+    }
+
+If data has already been uploaded for this dataset, you may also specify the ``data_upload`` property as either an embedded DataUpload object, or a URI to an existing DataUpload (for example, ``/api/1.0/data_upload/17/``). 
+
+If you are creating a Dataset specifically to be updated via the API you will want to specify columns at creation time. You can do this by providing a ``columns`` query string parameter containing a comma-separated list of column names, such as ``?columns=foo,bar,baz``. You may also specify a ``column_types`` parameter which is an array of types for the columns, such as ``column_types=int,unicode,bool``. Lastly, if you want PANDA to automatically indexed typed columns for data added to this dataset, you can pass a ``typed_columns`` parameter indicating which columns should be indexed, such as ``typed_columns=true,false,true``.
 
 Import
 ------
 
 Begin an import task. Any data previously imported for this dataset will be lost. Returns the original dataset, which will include the id of the new import task::
 
-    http://localhost:8000/api/1.0/dataset/[id]/import/
+    GET http://localhost:8000/api/1.0/dataset/[slug]/import/[data-upload-id]/
+
+Export
+------
+
+Exporting a dataset is an asynchronous operation. To initiate an export you simple need to make a GET request. The requesting user will be emailed when the export is complete::
+
+    GET http://localhost:8000/api/1.0/dataset/[slug]/export/
+
+You can export only results which match a query by appending the ``q`` querystring parameter. You can export only results after a certain time by appending the ``since`` querystring parameter. These may be combined::
+
+    GET http://localhost:8000/api/1.0/dataset/[slug]/export/?q=John&since=2012-01-01T00:00:00
+
+Reindex
+-------
+
+Reindexing allows you to add (or remove) typed columns from the dataset. You initiate a reindex with a GET request and can supply ``column_types`` and ``typed_columns`` fields in the same format as documented above in the section on creating a Dataset.
+
+::
+
+    GET http://localhost:8000/api/1.0/dataset/[slug]/reindex/
 
 Data
 ========
 
-Data objects are referenced by a unicode ``external_id`` property, specified at the time they are created. This property must be unique within a given ``Dataset``, but does not need to be unique globally. Data objects are accessible at per-dataset endpoints (e.g. ``/api/1.0/dataset/[slug]/data/``). There is also a cross-dataset Data search endpoint at ``/api/1.0/data``, however, this endpoint can only be used for search--not for create, update, or delete. (See below for more.)
+Data objects are referenced by a unicode ``external_id`` property, specified at the time they are created. This property must be unique within a given ``Dataset``, but does not need to be unique globally. Data objects are accessible at per-dataset endpoints (e.g. ``/api/1.0/dataset/[slug]/data/``). There is also a cross-dataset Data search endpoint at ``/api/1.0/data/``, however, this endpoint can only be used for search--not for create, update, or delete. (See below for more.)
 
 .. warning::
 
-    The ``external_id`` property of a Data object is the only way it can be accessed through the API. In order to work with Data via the API you must include this property at the time you create it. By default this property is ``null`` and the Data can not be accessed except via search.
+    The ``external_id`` property of a Data object is the only way it can be referenced via the API. In order to work with Data via the API you **must** include this property at the time you create it. By default this property is ``null`` and the Data can not be accessed except via search.
 
-An example ``Data`` object with an ``external_id``:
+An example Data object with an ``external_id``:
 
 .. code-block:: javascript
 
@@ -598,6 +734,11 @@ An example ``Data`` object **without** an ``external_id``, note that it also has
         "resource_uri": null
     }
 
+    
+.. warning::
+
+    You can not add, update or delete data in a **locked** dataset. An error will be returned if you attempt to do so.
+
 Schema
 ------
 
@@ -606,34 +747,36 @@ There is no schema endpoint for Data.
 List
 ----
 
-When listing data, PANDA will return a simplified ``Dataset`` object with an embedded ``meta`` object and an embedded ``objects`` array containing ``Data`` objects. The added Dataset metadata is purely for convenience when building user interfaces. 
+When listing data, PANDA will return a simplified Dataset object with an embedded ``meta`` object and an embedded ``objects`` array containing Data objects. The added Dataset metadata is purely for convenience when building user interfaces. 
 
 ::
 
-    http://localhost:8000/api/1.0/dataset/[slug]/data/
+    GET http://localhost:8000/api/1.0/dataset/[slug]/data/
     
 Search
 ------
 
 Full-text queries function as "filters" over the normal ``Data`` list. Therefore, search results will be in the same format as the list results described above::
 
-    http://localhost:8000/api/1.0/dataset/[slug]/data/?q=[query]
+    GET http://localhost:8000/api/1.0/dataset/[slug]/data/?q=[query]
 
 For details on searching Data across all Datasets, see below.
 
 Fetch
 -----
 
-To fetch a single ``Data`` from a given ``Dataset``::
+To fetch a single Data object from a given Dataset::
 
-    http://localhost:8000/api/1.0/dataset/[slug]/data/[external_id]/
+    GET http://localhost:8000/api/1.0/dataset/[slug]/data/[external_id]/
 
 Create and update
 -----------------
 
-Because Data is stored in Solr (rather than a SQL database), there is no functional difference between Create and Update. In either case any Data with the same ``external_id`` will be overwritten when the new Data is created. Because of this requests may be either ``POST``'ed to the list endpoint or ``PUT`` to the detail endpoint.
+Because Data is stored in Solr (rather than a SQL database), there is no functional difference between Create and Update. In either case any Data with the same ``external_id`` will be overwritten when the new Data is created. Because of this requests may be either POSTed to the list endpoint or PUT to the detail endpoint.
 
-An example POST::
+An examplew with POST::
+
+    POST http://localhost:8000/api/1.0/dataset/[slug]/data/
 
     {
         "data": [
@@ -641,14 +784,12 @@ An example POST::
             "column B value",
             "column C value"
         ],
-        "external_id": "id_value"
+        "external_id": "123456"
     }
 
-This object would be ``POST``'ed to::
+An example with PUT::
 
-    http://localhost:8000/api/1.0/dataset/[slug]/data/
-
-An example ``PUT``::
+    PUT http://localhost:8000/api/1.0/dataset/[slug]/data/123456/
 
     {
         "data": [
@@ -658,14 +799,10 @@ An example ``PUT``::
         ]
     }
 
-This object would be ``PUT`` to::
-
-    http://localhost:8000/api/1.0/dataset/[slug]/data/id_value/
-
 Bulk create and update
 ----------------------
 
-To create or update objects in bulk you may ``PUT`` an array of objects to the list endpoint. Any object with a matching ``external_id`` will be deleted and then new objects will be created. The body of the request should be formatted like::
+To create or update objects in bulk you may PUT an array of objects to the list endpoint. Any object with a matching ``external_id`` will be deleted and then new objects will be created. The body of the request should be formatted like::
 
     {
         "objects": [
@@ -691,16 +828,18 @@ To create or update objects in bulk you may ``PUT`` an array of objects to the l
 Delete
 ------
 
-To delete an object send a ``DELETE`` request to its detail url. The body of the request should be empty.
+To delete an object send a DELETE request to its detail url. The body of the request should be empty::
+
+    DELETE http://localhost:8000/api/1.0/dataset/[slug]/data/[external_id]/
 
 Delete all data from a dataset
 ------------------------------
 
-In addition to deleting individual objects, its possible to delete all objects within a dataset, by sending a ``DELETE`` request to the root per-dataset data endpoint. The body of the request should be empty.
+In addition to deleting individual objects, its possible to delete all Data within a Dataset, by sending a DELETE request to the root per-dataset data endpoint. The body of the request should be empty.
 
 ::
 
-    http://localhost:8000/api/1.0/dataset/[slug]/data/
+    DELETE http://localhost:8000/api/1.0/dataset/[slug]/data/
 
 Global search
 =============
@@ -709,7 +848,14 @@ Searching all data functions slightly differently than searching within a single
 
     http:://localhost:8000/api/1.0/data/?q=[query]
 
-The response is a ``meta`` object with paging information and an ``objects`` array containing simplified ``Dataset`` objects, each of which contains its own ``meta`` object and an ``objects`` array containing ``Data`` objects. **Each Dataset contains a group of matching Data.**
+The response is a ``meta`` object with paging information and an ``objects`` array containing simplified Dataset objects, each of which contains its own ``meta`` object and an ``objects`` array containing Data objects. **Each Dataset contains a group of matching Data.**
 
-When using this endpoint the ``limit`` and ``offset`` parameters refer to the ``Datasets`` (that is, the **groups**) returned. If you wish to paginate the result sets within each group you can use ``group_limit`` and ``group_offset``, however, this is rarely useful behavior.
+When using this endpoint the ``limit`` and ``offset`` parameters refer to the Datasets (that is, the **groups**) returned. If you wish to paginate the result sets within each group you can use ``group_limit`` and ``group_offset``, however, this is rarely useful behavior.
+
+Exporting global search results
+===============================
+
+You may export any set of search results to a zip file by passing ``export=true`` in the querystring. The ``limit``, ``offset``, ``group_limit`` and ``group_offset`` parameters will be ignored for export.
+
+This is an asynchronous operation which will return success or failure based on whether the export task was queued. Use the Task API to check its status or the Export API to retrieve the results.
 

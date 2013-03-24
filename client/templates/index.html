@@ -5,6 +5,8 @@
 <html>
 <head>
     <title>PANDA</title>
+    <link rel="icon" href="{{ settings.STATIC_URL }}img/favicon.ico" />
+
     {% compress css %}
     <link rel="stylesheet" href="{{ settings.STATIC_URL }}css/reset.css" type="text/css" charset="utf-8"/>
     <link rel="stylesheet" href="{{ settings.STATIC_URL }}css/fileuploader.css" type="text/css" charset="utf-8"/>
@@ -18,22 +20,33 @@
         <div class="navbar-inner">
             <div class="container-fluid">
                 <ul class="nav pull-left">
-                    <li id="logo"><a href="#"><img src="{{ settings.STATIC_URL }}img/panda_and_ire.png" /></a></li>
+                    <li id="logo"><a href="#search/all"><img src="{{ settings.STATIC_URL }}img/panda_and_ire.png" /></a></li>
                     <li id="loading-indicator"><a href="javascript:return false;"><img src="{{ settings.STATIC_URL }}img/ajax-loader.gif" /></a></li>
-                    <li><a href="#">Search</a></li>
+                    <li><a href="#search/all">Search</a></li>
                     <li><a href="#upload">Upload</a></li>
                     <li id="navbar-categories" class="dropdown">
-                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Browse <b class="caret"></b></a>
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Find a dataset <b class="caret"></b></a>
                         <ul id="categories-list" class="dropdown-menu">
                         </ul>
                     </li>
-                    <li><a href="mailto:chrisg@ire.org?subject=PANDA Project Feedback (version {{ settings.PANDA_VERSION }})">Send PANDA feedback (version {{ settings.PANDA_VERSION }})</a></li>
+                    <li id="navbar-help" class="dropdown">
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Help <b class="caret"></b></a>
+                        <ul id="help-list" class="dropdown-menu">
+                            <li><a href="#welcome">Welcome to PANDA</a></li>
+                            <li><a href="http://pandaproject.net/">Read the documentation</a></li>
+                            <li><a href="https://groups.google.com/forum/?fromgroups#!forum/panda-project-users">Ask a question on the user group</a></li>
+                        </ul>
+                    </li>
                 </ul>
                 <ul class="nav pull-right">
-                    <li id="navbar-email"><a href="javascript:alert('User Profile (TODO)');"></a></li>
+                    <li id="navbar-email"><a href="#"></a></li>
                     <li id="navbar-notifications" class="dropdown">
-                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Notifications <span class="count label important">2</span> <b class="caret"></b></a>
+                        <a href="#" class="dropdown-toggle" data-toggle="dropdown">Notifications <span class="count badge">0</span> <b class="caret"></b></a>
                         <ul class="dropdown-menu">
+                            <ul>
+                            </ul>
+                            <li class="divider"></li>
+                            <li><a href="#notifications">View all notifications</a></li>
                         </ul>
                     </li>
                     <li id="navbar-admin"><a href="/admin">Admin</a></li>
@@ -50,6 +63,7 @@
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/lib/jquery-1.7.1.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/lib/jquery.cookie.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/lib/jquery.tablesorter.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/lib/jquery.flot.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/lib/bootstrap.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/lib/bootbox.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/lib/underscore.js"></script>
@@ -60,7 +74,10 @@
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/lib/fileuploader.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/utils.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/application.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/errors.js"></script>
     {% endcompress %}
+
+    <!--[if lte IE 8]><script language="javascript" type="text/javascript" src="{{ settings.STATIC_URL }}js/lib/excanvas.min.js"></script><![endif]-->
 
     <script type="text/javascript">
         PANDA.settings.VERSION = "{{ settings.PANDA_VERSION }}";
@@ -69,14 +86,21 @@
         PANDA.settings.DEFAULT_SEARCH_ROWS_PER_GROUP = {{ settings.PANDA_DEFAULT_SEARCH_ROWS_PER_GROUP }};
         PANDA.settings.DEFAULT_SEARCH_ROWS = {{ settings.PANDA_DEFAULT_SEARCH_ROWS }};
         PANDA.settings.UNCATEGORIZED_ID = {{ settings.PANDA_UNCATEGORIZED_ID }};
-        PANDA.settings.DEMO_MODE = {{ demo_mode }};
+        PANDA.settings.AVAILABLE_SPACE_WARN = {{ settings.PANDA_AVAILABLE_SPACE_WARN }};
+        PANDA.settings.AVAILABLE_SPACE_CRITICAL = {{ settings.PANDA_AVAILABLE_SPACE_CRITICAL }};
+        PANDA.settings.PANDA_NOTIFICATIONS_TO_SHOW = {{ settings.PANDA_NOTIFICATIONS_TO_SHOW }};
+        PANDA.settings.MAX_UPLOAD_SIZE = {{ max_upload_size }};
+        PANDA.settings.EMAIL_ENABLED = {{ email_enabled }};
         PANDA.bootstrap = {{ bootstrap_data|safe }};
     </script>
 
     <script type="text/javascript" src="templates.js"></script>
 
     {% compress js %}
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/models/activity_log.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/models/exports.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/models/notifications.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/models/search_subscriptions.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/models/users.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/models/data_uploads.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/models/related_uploads.js"></script>
@@ -87,17 +111,27 @@
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/not_found.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/server_error.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/activate.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/reset_password.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/login.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/home.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/datasets_search.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/datasets_results.js"></script>
-    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/dataset_edit.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/modal_dataset_edit.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/modal_related_links.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/dataset_view.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/inline_search_filters.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/dataset_search.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/dataset_results.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/search_results.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/search.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/data_upload.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/notifications.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/modal_user_edit.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/modal_change_password.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/user.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/dashboard.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/welcome.js"></script>
+    <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/fetch_export.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/routers/index.js"></script>
     <script type="text/javascript" src="{{ settings.STATIC_URL }}js/views/root.js"></script>
     {% endcompress %}

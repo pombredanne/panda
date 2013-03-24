@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PANDA Project server setup script for Ubuntu 11.10
+# PANDA Project server setup script for Ubuntu 12.04
 # Must be executed with sudo!
 
 set -x
@@ -8,7 +8,8 @@ exec 1> >(tee /var/log/panda-install.log) 2>&1
 
 echo "PANDA installation beginning."
 
-CONFIG_URL="https://raw.github.com/pandaproject/panda/master/setup_panda"
+VERSION="1.0.3"
+CONFIG_PATH="/opt/panda/setup_panda"
 
 # Setup environment variables
 echo "DEPLOYMENT_TARGET=\"deployed\"" >> /etc/environment
@@ -17,10 +18,6 @@ export DEPLOYMENT_TARGET="deployed"
 # Install outstanding updates
 apt-get --yes update
 apt-get --yes upgrade
-
-# Configure unattended upgrades
-wget -nv $CONFIG_URL/10periodic -O /etc/apt/apt.conf.d/10periodic
-service unattended-upgrades restart
 
 # Install required packages
 apt-get install --yes git openssh-server postgresql python2.7-dev libxml2-dev libxml2 libxslt1.1 libxslt1-dev nginx build-essential openjdk-6-jdk libpq-dev python-pip mercurial
@@ -33,42 +30,54 @@ ln -s /etc/init.d/ssh /etc/rc4.d/S20ssh
 ln -s /etc/init.d/ssh /etc/rc5.d/S20ssh
 
 # Setup Solr + Jetty
-wget -nv http://mirror.uoregon.edu/apache//lucene/solr/3.4.0/apache-solr-3.4.0.tgz -O /opt/apache-solr-3.4.0.tgz
+wget -nv http://archive.apache.org/dist/lucene/solr/3.4.0/apache-solr-3.4.0.tgz -O /opt/apache-solr-3.4.0.tgz
 
 cd /opt
 tar -xzf apache-solr-3.4.0.tgz
 mv apache-solr-3.4.0 solr
 cp -r solr/example solr/panda
 
-wget -nv $CONFIG_URL/solr.xml -O /opt/solr/panda/solr/solr.xml
+# Get PANDA code
+git clone https://github.com/pandaproject/panda.git panda
+cd /opt/panda
+git checkout $VERSION
+
+# Configure unattended upgrades
+cp $CONFIG_PATH/10periodic /etc/apt/apt.conf.d/10periodic
+service unattended-upgrades restart
+
+# Install Solr configuration
+cp $CONFIG_PATH/solr.xml /opt/solr/panda/solr/solr.xml
 
 mkdir /opt/solr/panda/solr/pandadata
 mkdir /opt/solr/panda/solr/pandadata/conf
 mkdir /opt/solr/panda/solr/pandadata/lib
 
-wget -nv $CONFIG_URL/data_schema.xml -O /opt/solr/panda/solr/pandadata/conf/schema.xml
-wget -nv $CONFIG_URL/solrconfig.xml -O /opt/solr/panda/solr/pandadata/conf/solrconfig.xml
-wget -nv $CONFIG_URL/panda.jar -O /opt/solr/panda/solr/pandadata/lib/panda.jar
+cp $CONFIG_PATH/data_schema.xml /opt/solr/panda/solr/pandadata/conf/schema.xml
+cp $CONFIG_PATH/english_names.txt /opt/solr/panda/solr/pandadata/conf/english_names.txt
+cp $CONFIG_PATH/solrconfig.xml /opt/solr/panda/solr/pandadata/conf/solrconfig.xml
+cp $CONFIG_PATH/panda.jar /opt/solr/panda/solr/pandadata/lib/panda.jar
 
 mkdir /opt/solr/panda/solr/pandadata_test
 mkdir /opt/solr/panda/solr/pandadata_test/conf
 mkdir /opt/solr/panda/solr/pandadata_test/lib
 
-wget -nv $CONFIG_URL/data_schema.xml -O /opt/solr/panda/solr/pandadata_test/conf/schema.xml
-wget -nv $CONFIG_URL/solrconfig.xml -O /opt/solr/panda/solr/pandadata_test/conf/solrconfig.xml
-wget -nv $CONFIG_URL/panda.jar -O /opt/solr/panda/solr/pandadata_test/lib/panda.jar
+cp $CONFIG_PATH/data_schema.xml /opt/solr/panda/solr/pandadata_test/conf/schema.xml
+cp $CONFIG_PATH/english_names.txt /opt/solr/panda/solr/pandadata_test/conf/english_names.txt
+cp $CONFIG_PATH/solrconfig.xml /opt/solr/panda/solr/pandadata_test/conf/solrconfig.xml
+cp $CONFIG_PATH/panda.jar /opt/solr/panda/solr/pandadata_test/lib/panda.jar
 
 mkdir /opt/solr/panda/solr/pandadatasets
 mkdir /opt/solr/panda/solr/pandadatasets/conf
 
-wget -nv $CONFIG_URL/datasets_schema.xml -O /opt/solr/panda/solr/pandadatasets/conf/schema.xml
-wget -nv $CONFIG_URL/solrconfig.xml -O /opt/solr/panda/solr/pandadatasets/conf/solrconfig.xml
+cp $CONFIG_PATH/datasets_schema.xml /opt/solr/panda/solr/pandadatasets/conf/schema.xml
+cp $CONFIG_PATH/solrconfig.xml /opt/solr/panda/solr/pandadatasets/conf/solrconfig.xml
 
 mkdir /opt/solr/panda/solr/pandadatasets_test
 mkdir /opt/solr/panda/solr/pandadatasets_test/conf
 
-wget -nv $CONFIG_URL/datasets_schema.xml -O /opt/solr/panda/solr/pandadatasets_test/conf/schema.xml
-wget -nv $CONFIG_URL/solrconfig.xml -O /opt/solr/panda/solr/pandadatasets_test/conf/solrconfig.xml
+cp $CONFIG_PATH/datasets_schema.xml /opt/solr/panda/solr/pandadatasets_test/conf/schema.xml
+cp $CONFIG_PATH/solrconfig.xml /opt/solr/panda/solr/pandadatasets_test/conf/solrconfig.xml
 
 adduser --system --no-create-home --disabled-login --disabled-password --group solr
 chown -R solr:solr /opt/solr
@@ -76,35 +85,30 @@ chown -R solr:solr /opt/solr
 touch /var/log/solr.log
 chown solr:solr /var/log/solr.log
 
-wget -nv $CONFIG_URL/solr.conf -O /etc/init/solr.conf
+cp $CONFIG_PATH/solr.conf /etc/init/solr.conf
 initctl reload-configuration
 service solr start
 
 # Setup uWSGI
 adduser --system --no-create-home --disabled-login --disabled-password --group panda
-mkdir /var/run/uwsgi
-chown panda:panda /var/run/uwsgi
-wget -nv $CONFIG_URL/uwsgi.conf -O /etc/init/uwsgi.conf
+cp $CONFIG_PATH/uwsgi_jumpstart.conf /etc/init/uwsgi.conf
 initctl reload-configuration
 
 # Setup nginx
-wget -nv $CONFIG_URL/nginx -O /etc/nginx/sites-available/panda
+cp $CONFIG_PATH/nginx /etc/nginx/sites-available/panda
 ln -s /etc/nginx/sites-available/panda /etc/nginx/sites-enabled/panda
 rm /etc/nginx/sites-enabled/default
 service nginx restart
 
 # Setup Postgres
-wget -nv $CONFIG_URL/pg_hba.conf -O /etc/postgresql/9.1/main/pg_hba.conf
+cp $CONFIG_PATH/pg_hba.conf /etc/postgresql/9.1/main/pg_hba.conf
 service postgresql restart
 
 # Create database users
 echo "CREATE USER panda WITH PASSWORD 'panda';" | sudo -u postgres psql postgres
 sudo -u postgres createdb -O panda panda
 
-# Get code
-cd /opt
-git clone git://github.com/pandaproject/panda.git panda
-cd /opt/panda
+# Install Python requirements
 pip install -r requirements.txt
 
 # Setup panda directories 
@@ -131,8 +135,11 @@ sudo -u panda -E python manage.py collectstatic --noinput
 service uwsgi start
 
 # Setup Celery
-wget -nv $CONFIG_URL/celeryd.conf -O /etc/init/celeryd.conf
+cp $CONFIG_PATH/celeryd.conf /etc/init/celeryd.conf
 initctl reload-configuration
+mkdir /var/celery
+chown panda:panda /var/celery
 service celeryd start
 
 echo "PANDA installation complete."
+

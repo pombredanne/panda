@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import logging
+import socket
+
 from django.core import mail
 from livesettings import config_value
 
@@ -13,5 +16,14 @@ def get_connection():
         use_tls=config_value('EMAIL', 'EMAIL_USE_TLS')) 
 
 def send_mail(subject, message, recipients):
-    mail.send_mail('[PANDA] %s' % subject, message, str(config_value('EMAIL', 'DEFAULT_FROM_EMAIL')), recipients, connection=get_connection())
+    log = logging.getLogger('panda.utils.mail')
+
+    if not config_value('EMAIL', 'EMAIL_ENABLED'):
+        log.info('Email is disabled, not sending message to %s' % recipients)
+        return
+
+    try:
+        mail.send_mail('[PANDA] %s' % subject, message, str(config_value('EMAIL', 'DEFAULT_FROM_EMAIL')), recipients, connection=get_connection())
+    except socket.error:
+        log.error('Failed connecting to email server. (Sending to %s.)' % recipients)
 

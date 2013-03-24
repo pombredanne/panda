@@ -1,15 +1,167 @@
-=========
-Changelog
-=========
+1.0.3
+-----
+
+
+
+1.0.2
+-----
+
+* Fix bug preventing datasets with related uploads from being deleted. (#862)
+* Escape queries when URLs are passed via hrefs. (#867)
+* Workaround obscure Firefox url decoding issue. (#863)
+* Prevent long dataset descriptions from overflowing. (#864)
+* Fix local development installation script for Solr. 
+* Fix bug causing dates in XLS files to be imported as numbers.
+* Fix unescaped names in subscription dialogs. (#858)
+
+1.0.1
+-----
+
+* Improve security implemention to prevent API key theft. (#201)
+* Notifications list fixed in IE9. (#822)
+* Fix for searching categories with many datasets. (#849)
+* Fixed broken cross-dataset export link. (#848)
+* Fixed broken export links in email. (#847)
+* Added version number to admin and dashboard. (#845)
+
+1.0.0
+-----
+
+* Proper error messages when a search fails. (#600)
+* Upgrade to Django 1.4.1 security release.
+* Wrote new user documentation at pandaproject.net.
+* Remove nginx file size upload limitation. (#832)
+* Stale data in Solr indexes will no longer break search. (#793)
+* Add form for adding users in bulk to admin. (#762)
+* Fix broken Change Password and Logout buttons on admin pages. (#795)
+* Implement global search results export. (#788)
+* Increase uWSGI buffer size to prevent overflows. (#792)
+* Fix emails so they can be longer than 30 characters. (#789)
+* Add "Related Links" section to dataset pages. (#763)
+* Make progress bars degrade gracefully in IE. (#426)
+* Ensure new pages always begin scrolled to the top. (#790)
+* Fix broken export links in notifications. (#783)
+* Fix so that hitting enter in modal dialogs submits the form. (#781)
+* Add descriptions for data and related uploads. (#757)
+* Fix major bug in IE8 with handling encoding errors. (#688)
+* Upgrade all deployments to Ubuntu 12.04 LTS release. (#684)
+* User login cookies now last 30 days. (#639)
+* Reword "Column filters" to be easier to understand. (#591)
+* Major performance improvements for user pages. (#778)
+* Automatically match nicknames in search. (#761)
+* Search for data within dataset categories. (#760)
+* Add links to data exports to user pages. (#759)
+* Implement "Text" column filter. (#758)
+* Make modal dialogs focus first form field on open. (#674)
+* Fix display of notifications in navbar. (#749)
+* Datasets are no longer locked for editing during exports. (#659)
+* PANDA instances now have unique SECRET_KEYS for added security. (#465)
+* A password confirmation is now required to edit a user profile. (#677)
+* Datasets with aborted imports no longer appear broken. (#705)
+* Add refresh page link to dataset import status alerts. (#738)
+* Fix search subscription text when not using any full-text query (#747)
+* Add delete button for data uploads (also deletes data imported from that upload). (#754)
+* Improve appearance of the dashboard. (#765)
+* Eliminate default accounts and demo mode. (#769)
+* Implement "Welcome to PANDA" setup page. (#752)
+
+0.2.0
+-----
+
+* Implement automated search notifications. (#703)
+* Add landing pages for exports so they use the login logic. (#711)
+* Prompt for metadata during upload. (#710)
+* Add a human-readable description to tasks in the admin. (#709)
+* Fix longstanding bug where task error notifications may fail. (#700)
+* Add row count to import and reindex notification emails. (#697)
+* Fix filters so it is possible to search for a zero. (#696)
+* Add "Resend activation code" button to User admin pages. (#690)
+* Escape dataset names on User pages. (#685)
+* Reorganize import errors to be more readable. (#617)
+* Don't disable dataset search during import. (#483)
+* Update dataset full text when a user's name is changed via the admin. (#351)
+* Update dataset full text when a user's name is changed via the API. (#350)
+* Handle SMTP connection errors gracefully. (#335)
+* Normalize API behavior for Notications. (#237)
+* Fix bug where column filters could not be searched alone. (#694)
+* Fix bug where column filter ranges would not display. (#695)
+* Warn when uploading a file if low on storage space. (#693)
+* Add "Abort" link to TaskStatus admin page. (#419)
+
+0.1.4
+-----
+
+* Added "Forgot Password?" link. (#536)
+* Added setting to explicitly enable/disable email. (#680)
+* Pushing enter in a modal form now submits it. (#577)
+* Fix broken "expand search to all categories" link. (#673)
+* Improved usability of notifications. (#666)
+* Fix unescaped quotes in searches breaking pagination. (#665)
+* Fix "Browse all datasets" link on homepage. (#662)
+* Fix major bug with how search filters are applied. (#661)
+* Export cross-dataset search results. (#657)
+* Export single-dataset search results. (#641)
+* Users can now change their password. (#299)
+* Users can now update their email address. (#652)
+* Users can now update their name. (#150)
+* Per-user pages instead of email links. (#650)
+
+0.1.3
+-----
+
+* Add documentation links to the header of the app. (#623)
+* Reorganize documentation so users come first. (#624)
+* Add metrics dashboard.
+* Fix long-standing bug where dataset metadata might not get created. (#618)
+* Intelligently handle currency symbols in numeric columns. (#538)
+* Ensure related files are deleted when datasets are. (#612)
+* Implement dataset paging. (#609)
+* Overhaul datasets search urls.
+* Use human-readable data types. (#588)
+* Fix bug preventing new users from activating. (#614)
+* Fix bug preventing new users from being created. (#614)
+* Write user documentation. (#601)
+* Fix bug where an empty cell in a datetime column could break import. (#608)
+* Escape dataset names in email. (#610)
+
+0.1.2
+-----
+
+* Revise release process to prevent docs from referencing the master branch.
+* Fix bug where users could not login if their username was changed. (#511)
+* Wrote documentation for connecting via SSH.
+* Made max upload size configurable via admin settings. (#508)
+* Upgraded to Django 1.4. (#561)
+* Fixed escaping in dataset titles displayed in notifications (#598)
+* Doubled the amount of memory allocated to Solr.
+* Made Solr much less likely to run out of memory during queries.
 
 0.1.1
-=====
+-----
 
+* Fix bug where quotes in dataset titles could break the view page. (#570)
+* Fig bug where a dataset search url with no query would result in a 404. (#569)
+* Prevent datasets created via the API from having duplicate slugs. (#550)
+* Fix an issue where empty columns in a CSV could crash dataset creation.
+* Make it possible to specify column types via API at dataset creation time. (#518)
+* Import and search specific data columns (search filters). (#494, #506, et al)
+* Implement a configurable throttle for asynchronous tasks. (#502)
+* Added Justin Edwards to AUTHORS.
+* Added favicon.ico. (#512)
+* Better handling of timeout errors during file uploads. (#529)
+* Implement ability to import specific columns with type data, i.e. filters. (#496)
+* Fix bug where blank headers in XLSX files would be labelled "None".
+* Fix "unpack requires string length of 14" error during xls upload. (#486)
+* Implement locks so import/export processes can not occur simultaneously. (#353)
+* Improve handling of queries with inline punctuation. (#461)
+* Fix error when adding a category via Admin. (#470)
+* Add Niran Babalola to AUTHORS. (#464)
+* Suggest deactivating instead of deleting users. (#464)
 * Add "view all rows" link to dataset page. (#455)
 * Fix bug that caused changes to a dataset made during import to be lost. (#452)
 * Add feedback link. (#451)
 
 0.1.0
-=====
+-----
 
 * Initial beta release.

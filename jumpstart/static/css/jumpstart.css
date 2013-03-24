@@ -1,0 +1,38 @@
+body {
+    background-color: #404040;
+    color: white;
+}
+
+#index, #wait {
+    width: 400px;
+    margin-top: 150px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: 150px;
+}
+
+h2 {
+    font-weight: normal;
+    margin-bottom: 10px;
+}
+
+.alert {
+    display: block;
+}
+
+#setup {
+    margin-top: 30px;
+}
+
+label {
+    color: white;
+}
+
+.checking, .ready {
+    margin-top: 10px;
+}
+
+.ready {
+    display: none;
+}
+

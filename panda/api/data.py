@@ -15,8 +15,10 @@ from tastypie.validation import Validation
 
 from panda import solr
 from panda.api.datasets import DatasetResource
-from panda.api.utils import PandaApiKeyAuthentication, PandaPaginator, PandaResource, PandaSerializer
-from panda.models import Dataset
+from panda.exceptions import DatasetLockedError
+from panda.api.utils import PandaAuthentication, PandaPaginator, PandaResource, PandaSerializer
+from panda.models import Category, Dataset, SearchLog, TaskStatus, UserProxy
+from panda.tasks import ExportSearchTask, PurgeDataTask
 
 class SolrObject(object):
     """
@@ -57,7 +59,9 @@ class DataValidation(Validation):
             errors['data'] = ['The data field is required.']
 
         if 'external_id' in bundle.data:
-            if not re.match('^[\w\d_-]+$', bundle.data['external_id']):
+            if not isinstance(bundle.data['external_id'], basestring):
+                errors['external_id'] = ['external_id must be a string.']
+            elif not re.match('^[\w\d_-]+$', bundle.data['external_id']):
                 errors['external_id'] = ['external_id can only contain letters, numbers, underscores and dashes.']
 
         return errors
@@ -78,7 +82,7 @@ class DataResource(PandaResource):
         allowed_methods = ['get', 'post', 'put', 'delete']
         always_return_data = True
 
-        authentication = PandaApiKeyAuthentication()
+        authentication = PandaAuthentication()
         authorization = DjangoAuthorization()
         serializer = PandaSerializer()
         validation = DataValidation()
@@ -167,10 +171,10 @@ class DataResource(PandaResource):
         if dataset.initial_upload and not dataset.row_count:
             errors['dataset'] = ['Can not create or modify data for a dataset which has initial_upload, but has not completed the import process.']
 
-        if dataset.columns is None:
+        if dataset.column_schema is None:
             errors['dataset'] = ['Can not create or modify data for a dataset without columns.']
         else:
-            expected_field_count = len(dataset.columns)
+            expected_field_count = len(dataset.column_schema)
 
             if field_count != expected_field_count:
                 errors['data'] = ['Got %i data fields. Expected %i.' % (field_count, expected_field_count)]
@@ -233,7 +237,14 @@ class DataResource(PandaResource):
         else:
             external_id = None
 
-        row = dataset.add_row(request.user, bundle.data['data'], external_id=external_id)
+        # Because users may have authenticated via headers the request.user may
+        # not be a full User instance. To be sure, we fetch one.
+        user = UserProxy.objects.get(id=request.user.id)
+
+        try:
+            row = dataset.add_row(user, bundle.data['data'], external_id=external_id)
+        except DatasetLockedError:
+            raise ImmediateHttpResponse(response=http.HttpForbidden('Dataset is currently locked by another process.'))
 
         bundle.obj = SolrObject(row)
 
@@ -256,7 +267,15 @@ class DataResource(PandaResource):
         Delete a ``Data``.
         """
         dataset = Dataset.objects.get(slug=kwargs['dataset_slug'])
-        dataset.delete_row(request.user, kwargs['external_id'])
+
+        # Because users may have authenticated via headers the request.user may
+        # not be a full User instance. To be sure, we fetch one.
+        user = UserProxy.objects.get(id=request.user.id)
+
+        try:
+            dataset.delete_row(user, kwargs['external_id'])
+        except DatasetLockedError:
+            raise ImmediateHttpResponse(response=http.HttpForbidden('Dataset is currently locked by another process.'))
 
     def rollback(self, bundles):
         """
@@ -308,6 +327,9 @@ class DataResource(PandaResource):
 
             self.is_valid(bundle, request)
 
+            if bundle.errors:
+                self.error_response(bundle.errors, request)
+
             bundles.append(bundle)
             data.append((
                 bundle.data['data'],
@@ -315,8 +337,15 @@ class DataResource(PandaResource):
             ))
         
             self.validate_bundle_data(bundle, request, dataset)
+
+        # Because users may have authenticated via headers the request.user may
+        # not be a full User instance. To be sure, we fetch one.
+        user = UserProxy.objects.get(id=request.user.id)
         
-        solr_rows = dataset.add_many_rows(request.user, data)
+        try:
+            solr_rows = dataset.add_many_rows(user, data)
+        except DatasetLockedError:
+            raise ImmediateHttpResponse(response=http.HttpForbidden('Dataset is currently locked by another process.'))
 
         for bundle, solr_row in zip(bundles, solr_rows):
             bundle.obj = SolrObject(solr_row)
@@ -360,7 +389,15 @@ class DataResource(PandaResource):
         not supported.
         """
         dataset = Dataset.objects.get(slug=kwargs['dataset_slug'])
-        dataset.delete_all_rows(request.user) 
+
+        # Because users may have authenticated via headers the request.user may
+        # not be a full User instance. To be sure, we fetch one.
+        user = UserProxy.objects.get(id=request.user.id)
+        
+        try:
+            dataset.delete_all_rows(user) 
+        except DatasetLockedError:
+            raise ImmediateHttpResponse(response=http.HttpForbidden('Dataset is currently locked by another process.'))
 
         return http.HttpNoContent()
 
@@ -378,67 +415,119 @@ class DataResource(PandaResource):
         self.throttle_check(request)
 
         query = request.GET.get('q', '')
+        category = request.GET.get('category', '')
+        since = request.GET.get('since', None)
         limit = int(request.GET.get('limit', settings.PANDA_DEFAULT_SEARCH_GROUPS))
         offset = int(request.GET.get('offset', 0))
         group_limit = int(request.GET.get('group_limit', settings.PANDA_DEFAULT_SEARCH_ROWS_PER_GROUP))
         group_offset = int(request.GET.get('group_offset', 0))
+        export = bool(request.GET.get('export', False))
 
-        response = solr.query_grouped(
-            settings.SOLR_DATA_CORE,
-            query,
-            'dataset_slug',
-            offset=offset,
-            limit=limit,
-            group_limit=group_limit,
-            group_offset=group_offset
-        )
-        groups = response['grouped']['dataset_slug']['groups']
+        if category:
+            if category != 'uncategorized':
+                category = Category.objects.get(slug=category)
+                dataset_slugs = category.datasets.values_list('slug', flat=True)
+            else:
+                dataset_slugs = Dataset.objects.filter(categories=None).values_list('slug', flat=True) 
 
-        page = PandaPaginator(
-            request.GET,
-            groups,
-            resource_uri=request.path_info,
-            count=response['grouped']['dataset_slug']['ngroups']
-        ).page()
+            query += ' dataset_slug:(%s)' % ' '.join(dataset_slugs)
 
-        datasets = []
+        if since:
+            query = 'last_modified:[' + since + 'Z TO *] AND (%s)' % query
 
-        for group in groups:
-            dataset_slug = group['groupValue']
-            results = group['doclist']
+        # Because users may have authenticated via headers the request.user may
+        # not be a full User instance. To be sure, we fetch one.
+        user = UserProxy.objects.get(id=request.user.id)
 
-            dataset_resource = DatasetResource()
-            dataset = Dataset.objects.get(slug=dataset_slug)
-            dataset_bundle = dataset_resource.build_bundle(obj=dataset, request=request)
-            dataset_bundle = dataset_resource.full_dehydrate(dataset_bundle)
-            dataset_bundle = dataset_resource.simplify_bundle(dataset_bundle)
+        if export:
+            task_type = ExportSearchTask
 
-            objects = [SolrObject(obj) for obj in results['docs']]
-            
-            dataset_search_url = reverse('api_dataset_data_list', kwargs={ 'api_name': self._meta.api_name, 'dataset_resource_name': 'dataset', 'resource_name': 'data', 'dataset_slug': dataset.slug })
+            task = TaskStatus.objects.create(
+                task_name=task_type.name,
+                task_description='Export search results for "%s".' % query,
+                creator=user
+            )
 
-            data_page = PandaPaginator(
-                { 'limit': str(group_limit), 'offset': str(group_offset), 'q': query },
-                objects,
-                resource_uri=dataset_search_url,
-                count=results['numFound']
+            task_type.apply_async(
+                args=[query, task.id],
+                kwargs={},
+                task_id=task.id
+            )
+        else:
+            response = solr.query_grouped(
+                settings.SOLR_DATA_CORE,
+                query,
+                'dataset_slug',
+                offset=offset,
+                limit=limit,
+                group_limit=group_limit,
+                group_offset=group_offset
+            )
+            groups = response['grouped']['dataset_slug']['groups']
+
+            page = PandaPaginator(
+                request.GET,
+                groups,
+                resource_uri=request.path_info,
+                count=response['grouped']['dataset_slug']['ngroups']
             ).page()
 
-            dataset_bundle.data.update(data_page)
-            dataset_bundle.data['objects'] = []
+            datasets = []
 
-            for obj in objects:
-                data_bundle = self.build_bundle(obj=obj, request=request)
-                data_bundle = self.full_dehydrate(data_bundle)
-                dataset_bundle.data['objects'].append(data_bundle)
+            for group in groups:
+                dataset_slug = group['groupValue']
+                results = group['doclist']
+                
+                try:
+                    dataset = Dataset.objects.get(slug=dataset_slug)
+                # In the event that stale data exists in Solr, skip this dataset,
+                # request the invalid data be purged and return the other results.
+                # Pagination may be wrong, but this is the most functional solution. (#793)
+                except Dataset.DoesNotExist:
+                    PurgeDataTask.apply_async(args=[dataset_slug])
+                    solr.delete(settings.SOLR_DATASETS_CORE, 'slug:%s' % dataset_slug)
 
-            datasets.append(dataset_bundle.data)
+                    page['meta']['total_count'] -= 1
 
-        page['objects'] = datasets
+                    continue
+                
+                dataset_resource = DatasetResource()
+                dataset_bundle = dataset_resource.build_bundle(obj=dataset, request=request)
+                dataset_bundle = dataset_resource.full_dehydrate(dataset_bundle)
+                dataset_bundle = dataset_resource.simplify_bundle(dataset_bundle)
+
+                objects = [SolrObject(obj) for obj in results['docs']]
+                
+                dataset_search_url = reverse('api_dataset_data_list', kwargs={ 'api_name': self._meta.api_name, 'dataset_resource_name': 'dataset', 'resource_name': 'data', 'dataset_slug': dataset.slug })
+
+                data_page = PandaPaginator(
+                    { 'limit': str(group_limit), 'offset': str(group_offset), 'q': query },
+                    objects,
+                    resource_uri=dataset_search_url,
+                    count=results['numFound']
+                ).page()
+
+                dataset_bundle.data.update(data_page)
+                dataset_bundle.data['objects'] = []
+
+                for obj in objects:
+                    data_bundle = self.build_bundle(obj=obj, request=request)
+                    data_bundle = self.full_dehydrate(data_bundle)
+                    dataset_bundle.data['objects'].append(data_bundle)
+
+                datasets.append(dataset_bundle.data)
+
+            page['objects'] = datasets
+            
+            # Log query
+            SearchLog.objects.create(user=user, dataset=None, query=query)
 
         self.log_throttled_access(request)
 
-        return self.create_response(request, page)
+        if export:
+            return self.create_response(request, 'Export queued.')
+        else:
+            return self.create_response(request, page)
 
     def search_dataset_data(self, request, **kwargs):
         """
@@ -448,14 +537,18 @@ class DataResource(PandaResource):
         """
         dataset = Dataset.objects.get(slug=kwargs['dataset_slug'])
 
-        query = request.GET.get('q', None)
+        query = request.GET.get('q', '')
+        since = request.GET.get('since', None)
         limit = int(request.GET.get('limit', settings.PANDA_DEFAULT_SEARCH_ROWS))
         offset = int(request.GET.get('offset', 0))
 
         if query:
-            solr_query = 'dataset_slug:%s AND %s' % (dataset.slug, query)
+            solr_query = 'dataset_slug:%s AND (%s)' % (dataset.slug, query)
         else:
             solr_query = 'dataset_slug:%s' % dataset.slug
+
+        if since:
+            solr_query += ' AND last_modified:[' + since + 'Z TO *]'
 
         response = solr.query(
             settings.SOLR_DATA_CORE,
@@ -485,6 +578,12 @@ class DataResource(PandaResource):
             bundle = self.build_bundle(obj=obj, request=request)
             bundle = self.full_dehydrate(bundle)
             dataset_bundle.data['objects'].append(bundle.data)
+
+        # Because users may have authenticated via headers the request.user may
+        # not be a full User instance. To be sure, we fetch one.
+        user = UserProxy.objects.get(id=request.user.id)
+        
+        SearchLog.objects.create(user=user, dataset=dataset, query=query)
 
         return dataset_bundle
 

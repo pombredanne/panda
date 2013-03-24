@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import Group
 from django.conf import settings
 from django.test import TestCase, TransactionTestCase
@@ -8,7 +10,7 @@ from django.utils import simplejson as json
 from tastypie.bundle import Bundle
 
 from panda.api.users import UserValidation
-from panda.models import User
+from panda.models import UserProxy
 from panda.tests import utils
 
 class TestUserValidation(TestCase):
@@ -38,29 +40,8 @@ class TestUserValidation(TestCase):
 
             self.assertNotIn("email", errors)
 
-    def test_email_used_as_username(self):
-        bundle = Bundle(data={ 'email': 'panda@pandaproject.net' })
-    
-        self.validator.is_valid(bundle)
-
-        self.assertEqual(bundle.data['username'], 'panda@pandaproject.net')       
-
-    def test_password_missing(self):
-        bundle = Bundle(data={ 'email': 'panda@pandaproject.net' })
-
-        self.validator.is_valid(bundle)
-
-        self.assertEqual(bundle.data['password'], None)
-
-    def test_password_supplied(self):
-        bundle = Bundle(data={ 'email': 'panda@pandaproject.net', 'password': 'panda' })
-
-        self.validator.is_valid(bundle)
-
-        self.assertEqual(bundle.data['password'][:5], 'sha1$')
-
 class TestAPIUser(TransactionTestCase):
-    fixtures = ['init_panda.json']
+    fixtures = ['init_panda.json', 'test_users.json']
 
     def setUp(self):
         settings.CELERY_ALWAYS_EAGER = True
@@ -127,10 +108,11 @@ class TestAPIUser(TransactionTestCase):
         self.assertEqual(new_user.email, 'tester@tester.com')
         self.assertEqual(new_user.first_name, 'Testy')
         self.assertEqual(new_user.last_name, 'McTester')
-        self.assertEqual(new_user.password[:5], 'sha1$')
         self.assertNotEqual(new_user.api_key, None)
 
         self.assertEqual(list(new_user.groups.all()), [self.panda_user_group])
+
+        self.assertEqual(authenticate(username='tester@tester.com', password='test'), new_user)
 
     def test_create_as_user(self):
         new_user = {
@@ -143,4 +125,100 @@ class TestAPIUser(TransactionTestCase):
         response = self.client.post('/api/1.0/user/', content_type='application/json', data=json.dumps(new_user), **self.auth_headers)
 
         self.assertEqual(response.status_code, 401)
+
+    def test_update_as_user(self):
+        update_user = {
+            'email': 'tester@tester.com',
+            'first_name': 'Testy',
+            'last_name': 'McTester'
+        }
+
+        before_user = self.user
+
+        response = self.client.put('/api/1.0/user/%i/' % self.user.id, content_type='application/json', data=json.dumps(update_user), **self.auth_headers)
+
+        self.assertEqual(response.status_code, 202)
+
+        after_user = UserProxy.objects.get(id=self.user.id)
+
+        self.assertEqual(after_user.email, 'tester@tester.com')
+        self.assertEqual(after_user.username, 'tester@tester.com')
+        self.assertEqual(after_user.first_name, 'Testy')
+        self.assertEqual(after_user.last_name, 'McTester')
+        self.assertEqual(before_user.date_joined, after_user.date_joined)
+        self.assertEqual(before_user.is_active, after_user.is_active)
+        self.assertEqual(before_user.last_login, after_user.last_login)
+        self.assertEqual(before_user.password, after_user.password)
+
+    def test_update_as_different_user(self):
+        new_user = {
+            'email': 'tester@tester.com',
+            'password': 'test',
+            'first_name': 'Testy',
+            'last_name': 'McTester'
+        }
+
+        response = self.client.post('/api/1.0/user/', content_type='application/json', data=json.dumps(new_user), **utils.get_auth_headers('panda@pandaproject.net'))
+
+        self.assertEqual(response.status_code, 201)
+
+        update_user = {
+            'email': 'foo@bar.com',
+            'first_name': 'Testy',
+            'last_name': 'McTester'
+        }
+
+        response = self.client.put('/api/1.0/user/%i/' % self.user.id, content_type='application/json', data=json.dumps(update_user), **utils.get_auth_headers('tester@tester.com'))
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_update_as_admin(self):
+        update_user = {
+            'email': 'tester@tester.com',
+            'first_name': 'Testy',
+            'last_name': 'McTester'
+        }
+
+        before_user = self.user
+
+        response = self.client.put('/api/1.0/user/%i/' % self.user.id, content_type='application/json', data=json.dumps(update_user), **utils.get_auth_headers('panda@pandaproject.net'))
+
+        self.assertEqual(response.status_code, 202)
+
+        after_user = UserProxy.objects.get(id=self.user.id)
+
+        self.assertEqual(after_user.email, 'tester@tester.com')
+        self.assertEqual(after_user.username, 'tester@tester.com')
+        self.assertEqual(after_user.first_name, 'Testy')
+        self.assertEqual(after_user.last_name, 'McTester')
+        self.assertEqual(before_user.date_joined, after_user.date_joined)
+        self.assertEqual(before_user.is_active, after_user.is_active)
+        self.assertEqual(before_user.last_login, after_user.last_login)
+        self.assertEqual(before_user.password, after_user.password)
+
+    def test_change_password(self):
+        update_user = {
+            'email': 'tester@tester.com',
+            'first_name': 'Testy',
+            'last_name': 'McTester',
+            'password': 'foobarbaz'
+        }
+
+        before_user = self.user
+
+        response = self.client.put('/api/1.0/user/%i/' % self.user.id, content_type='application/json', data=json.dumps(update_user), **self.auth_headers)
+
+        self.assertEqual(response.status_code, 202)
+
+        after_user = UserProxy.objects.get(id=self.user.id)
+
+        self.assertEqual(after_user.email, 'tester@tester.com')
+        self.assertEqual(after_user.username, 'tester@tester.com')
+        self.assertEqual(after_user.first_name, 'Testy')
+        self.assertEqual(after_user.last_name, 'McTester')
+        self.assertEqual(before_user.date_joined, after_user.date_joined)
+        self.assertEqual(before_user.is_active, after_user.is_active)
+        self.assertEqual(before_user.last_login, after_user.last_login)
+        self.assertNotEqual(before_user.password, after_user.password)
+        self.assertNotEqual(after_user.password, 'foobarbaz')
 

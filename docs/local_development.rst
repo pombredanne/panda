@@ -11,6 +11,7 @@ Use the tools appropriate to your operating system to install the following pack
 * virtualenv
 * virtualenvwrapper
 * PostgreSQL
+* Mercurial (hg)
 
 Set up PANDA
 ============
@@ -39,6 +40,7 @@ This script will setup the complete application, *except* for Solr. Be sure to r
     python manage.py syncdb --noinput
     python manage.py migrate --noinput
     python manage.py loaddata panda/fixtures/init_panda.json
+    python manage.py loaddata panda/fixtures/test_users.json
 
     # Start PANDA
     python manage.py runserver
@@ -62,20 +64,24 @@ Open *another* terminal in the PANDA directory and enter:
 Set up Solr
 ===========
 
-Installing Solr can be tricky and will vary quite a bit depending on your operating system. The following will get you up and running on OSX Lion, using `Homebrew <https://github.com/mxcl/homebrew>`_. If you've just started the PANDA server, open a new terminal in the PANDA directory and enter these commands:
+Installing Solr can be tricky and will vary quite a bit depending on your operating system. The following will get you up and running on OSX Lion (and probably other versions). If you've just started the PANDA server, open a new terminal in the PANDA directory and enter these commands:
 
 .. code-block:: bash
 
     # Get into the env
     workon panda
 
-    # Install solr 3.4.0
-    brew update
-    brew install solr
+    # Fetch the Solr 3.4.0 binaries
+    curl http://archive.apache.org/dist/lucene/solr/3.4.0/apache-solr-3.4.0.tgz -o apache-solr-3.4.0.tgz
+    tar -zxf apache-solr-3.4.0.tgz
+    rm apache-solr-3.4.0.tgz
 
     # Create Solr home directory
     sudo mkdir /var/solr
     sudo chown $USER /var/solr
+
+    # Jump back to the directory where you installed PANDA
+    cd ~/src/panda
 
     # This command will install all Solr configuration
     fab local_reset_solr
@@ -89,6 +95,8 @@ Checking your PANDA
 Your PANDA should now be running at::
 
     http://localhost:8000/
+
+A PANDA installed locally will not run through the normal setup mode procudure. Instead, two default users will be created.
 
 You can login using the default user credentials::
 

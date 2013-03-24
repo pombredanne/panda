@@ -1,6 +1,4 @@
 PANDA.views.DatasetsSearch = Backbone.View.extend({
-    el: $("#content"),
-
     events: {
         "submit #datasets-search-form":      "search_event"
     },
@@ -13,38 +11,43 @@ PANDA.views.DatasetsSearch = Backbone.View.extend({
         _.bindAll(this);
 
         this.datasets = new PANDA.collections.Datasets();
-        this.results = new PANDA.views.DatasetsResults({ search: this });
+        this.results = new PANDA.views.DatasetsResults();
     },
 
     reset: function(category, query, limit, page) {
+        /*
+         * Execute the search.
+         *
+         * TODO: error handler
+         */
         this.category = category;
         this.query = query;
 
         this.render();
-
-        // Bypass search if there are no query terms
-        if (!category && !query) {
-            this.datasets.search_meta(null, query, 10, 1);
-        } else if (category) {
-            this.datasets.search_meta(category, query, null, null);
-        } else {
-            this.datasets.search_meta(null, query, null, 1);
-        }
+        
+        this.datasets.search_meta(
+            (this.category == "all") ? null : this.category,
+            this.query,
+            limit,
+            page,
+            _.bind(function(datasets) {
+                this.results.reset(this);
+                this.results.render();
+            }, this)
+        );
     },
 
     render: function() {
-        var categories = Redd.get_categories();
-
         var context = PANDA.utils.make_context({
-            categories: categories,
+            categories: Redd.get_categories(),
             category: this.category,
-            query: this.query,
+            query: this.query || "",
             datasets: this.datasets.results()
         });
 
-        this.el.html(PANDA.templates.datasets_search(context));
+        this.$el.html(PANDA.templates.datasets_search(context));
 
-        this.results.el = $("#datasets-search-results");
+        this.results.setElement("#datasets-search-results");
 
         $('a[rel="popover"]').popover();
     },

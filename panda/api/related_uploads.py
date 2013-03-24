@@ -11,7 +11,7 @@ from tastypie.authorization import DjangoAuthorization
 from tastypie.exceptions import NotFound
 from tastypie.utils.urls import trailing_slash
 
-from panda.api.utils import PandaApiKeyAuthentication, PandaModelResource, PandaSerializer
+from panda.api.utils import PandaAuthentication, PandaModelResource, PandaSerializer
 from panda.models import RelatedUpload
 
 class RelatedUploadResource(PandaModelResource):
@@ -20,15 +20,20 @@ class RelatedUploadResource(PandaModelResource):
     """
     from panda.api.users import UserResource
 
-    creator = fields.ForeignKey(UserResource, 'creator', full=True)
-    dataset = fields.ForeignKey('panda.api.datasets.DatasetResource', 'dataset')
+    filename = fields.CharField('filename', readonly=True)
+    original_filename = fields.CharField('original_filename', readonly=True)
+    size = fields.IntegerField('size', readonly=True)
+    creator = fields.ForeignKey(UserResource, 'creator', full=True, readonly=True)
+    creation_date = fields.DateTimeField('creation_date', readonly=True)
+    dataset = fields.ForeignKey('panda.api.datasets.DatasetResource', 'dataset', null=True, readonly=True)
+    title = fields.CharField('title', null=True)
 
     class Meta:
         queryset = RelatedUpload.objects.all()
         resource_name = 'related_upload'
-        allowed_methods = ['get', 'delete']
+        allowed_methods = ['get', 'put', 'delete']
 
-        authentication = PandaApiKeyAuthentication()
+        authentication = PandaAuthentication()
         authorization = DjangoAuthorization()
         serializer = PandaSerializer()
 
@@ -61,7 +66,8 @@ class RelatedUploadResource(PandaModelResource):
         """
         Download the original file that was uploaded.
         """
-        self.method_check(request, allowed=['get'])
+        # Allow POST so csrf token can come through
+        self.method_check(request, allowed=['get', 'post'])
         self.is_authenticated(request)
         self.throttle_check(request)
 

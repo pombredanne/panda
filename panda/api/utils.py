@@ -2,9 +2,11 @@
 
 from urllib import unquote
 
+from django.conf import settings
 from django.conf.urls.defaults import url
-from django.contrib.auth.models import User
 from django.http import HttpResponse
+from django.middleware.csrf import _sanitize_token, constant_time_compare
+from django.utils.http import same_origin
 from tastypie.authentication import ApiKeyAuthentication
 from tastypie.bundle import Bundle
 from tastypie.fields import ApiField, CharField
@@ -14,6 +16,7 @@ from tastypie.serializers import Serializer
 from tastypie.utils.urls import trailing_slash
 
 from panda.fields import JSONField
+from panda.models import UserProxy
 
 PANDA_CACHE_CONTROL = 'max-age=0,no-cache,no-store'
 
@@ -106,31 +109,83 @@ class SluggedModelResource(PandaModelResource):
             url(r"^(?P<resource_name>%s)/(?P<slug>[\w\d_-]+)%s$" % (self._meta.resource_name, trailing_slash()), self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
 
-class PandaApiKeyAuthentication(ApiKeyAuthentication):
+class PandaAuthentication(ApiKeyAuthentication):
     """
-    Custom API Auth that accepts parameters as cookies or headers as well as GET params.
+    Custom API Auth that authenticates via sessions, headers or querystring parameters. 
     """
-    def is_authenticated(self, request, **kwargs):
-        email = request.COOKIES.get('email') or request.META.get('HTTP_PANDA_EMAIL') or request.GET.get('email')
-        api_key = request.COOKIES.get('api_key') or request.META.get('HTTP_PANDA_API_KEY') or request.GET.get('api_key')
+    def try_sessions(self, request, **kwargs):
+        """
+        Attempt to authenticate with sessions.
+
+        Cribbed from a newer version of Tastypie than we're using.
+        """
+        csrf_token = _sanitize_token(request.COOKIES.get(settings.CSRF_COOKIE_NAME, ''))
+
+        if request.is_secure():
+            referer = request.META.get('HTTP_REFERER')
+
+            if referer is None:
+                return False
+
+            good_referer = 'https://%s/' % request.get_host()
+
+            if not same_origin(referer, good_referer):
+                return False
+
+        # Tastypie docstring says accessing POST here isn't safe, but so far it's not causing any problems...
+        # This is necessary for downloads that post the csrf token from an iframe
+        request_csrf_token = request.META.get('HTTP_X_CSRFTOKEN', '') or request.POST.get('csrfmiddlewaretoken', '')
+
+        if not constant_time_compare(request_csrf_token, csrf_token):
+            return False
+
+        return request.user.is_authenticated()
+
+    def try_api_keys(self, request, **kwargs):
+        """
+        Attempt to authenticate with API keys in headers or parameters.
+        """
+        email = request.META.get('HTTP_PANDA_EMAIL') or request.GET.get('email')
+        api_key = request.META.get('HTTP_PANDA_API_KEY') or request.GET.get('api_key')
 
         if email:
             email = unquote(email)
 
         if not email or not api_key:
-            return self._unauthorized()
+            return False
 
         try:
-            user = User.objects.get(username=email.lower())
-        except (User.DoesNotExist, User.MultipleObjectsReturned):
-            return self._unauthorized()
+            user = UserProxy.objects.get(username=email.lower())
+        except (UserProxy.DoesNotExist, UserProxy.MultipleObjectsReturned):
+            return False 
 
         if not user.is_active:
-            return self._unauthorized()
-
+            return False
+        
         request.user = user
 
         return self.get_key(user, api_key)
+
+    def is_authenticated(self, request, **kwargs):
+        authenticated = self.try_sessions(request, **kwargs)
+
+        if authenticated:
+            return True
+
+        authenticated = self.try_api_keys(request, **kwargs)
+
+        if authenticated:
+            return True
+
+        return self._unauthorized()
+
+    def get_identifier(self, request):
+        """
+        Provides a unique string identifier for the requestor.
+
+        This implementation returns the user's username.
+        """
+        return request.user.username
 
 class PandaSerializer(Serializer):
     """

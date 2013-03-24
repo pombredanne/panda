@@ -6,12 +6,13 @@ from django.conf import settings
 from django.test import TransactionTestCase
 from django.test.client import Client
 from django.utils import simplejson as json
+import pytz
 
 from panda.models import TaskStatus
 from panda.tests import utils
 
 class TestAPITaskStatus(TransactionTestCase):
-    fixtures = ['init_panda.json']
+    fixtures = ['init_panda.json', 'test_users.json']
 
     def setUp(self):
         settings.CELERY_ALWAYS_EAGER = True
@@ -23,8 +24,6 @@ class TestAPITaskStatus(TransactionTestCase):
         self.upload = utils.get_test_data_upload(self.user, self.dataset)
 
         self.dataset.import_data(self.user, self.upload, 0)
-
-        utils.wait()
 
         self.auth_headers = utils.get_auth_headers()
 
@@ -41,9 +40,9 @@ class TestAPITaskStatus(TransactionTestCase):
 
         self.assertEqual(body['status'], task.status)
         self.assertEqual(body['task_name'], task.task_name)
-        start = datetime.strptime(body['start'], "%Y-%m-%dT%H:%M:%S" )
+        start = datetime.strptime(body['start'], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=pytz.timezone('Etc/UTC'))
         self.assertEqual(start, task.start.replace(microsecond=0))
-        end = datetime.strptime(body['end'], "%Y-%m-%dT%H:%M:%S" )
+        end = datetime.strptime(body['end'], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=pytz.timezone('Etc/UTC'))
         self.assertEqual(end, task.end.replace(microsecond=0))
         self.assertEqual(body['message'], task.message)
         self.assertEqual(body['traceback'], None)

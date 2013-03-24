@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import datetime
+from itertools import islice
+from types import NoneType
 
 from csvkit.typeinference import NULL_TIME
 from openpyxl.reader.excel import load_workbook
@@ -13,7 +15,7 @@ def extract_column_names(path, dialect, **kwargs):
     sheet = book.get_active_sheet()
     headers = sheet.iter_rows().next()
 
-    return [h.internal_value for h in headers]
+    return [unicode(h.internal_value) if h.internal_value is not None else '' for h in headers]
 
 def normalize_date(dt):
     if dt.time() == NULL_TIME:
@@ -63,4 +65,73 @@ def sample_data(path, dialect, sample_size, **kwargs):
         samples.append(values)
 
     return samples
+
+def determine_column_type(types):
+    """
+    Determine the correct type for a column from a list of cell types.
+    """
+    types_set = set(types)
+    types_set.discard(NoneType)
+
+    # Normalize mixed types to text
+    if len(types_set) > 1:
+        return unicode
+
+    try:
+        return types_set.pop()
+    except KeyError:
+        return None 
+
+def determine_number_type(values):
+    """
+    Determine if a column of numbers in an XLS file are integral.
+    """
+    # Test if all values are whole numbers, if so coerce floats it ints
+    integral = True
+
+    for v in values:
+        if v and v % 1 != 0:
+            integral = False
+            break
+
+    if integral:
+        return int
+    else:
+        return float
+
+def determine_date_type(values):
+    """
+    Determine if a column of numbers in an XLS file are only dates.
+    """
+    if any([dt and dt.time() != NULL_TIME for dt in values]):
+        return datetime.datetime
+    else:
+        return datetime.date
+
+def guess_column_types(path, dialect, sample_size, encoding='utf-8'):
+    """
+    Guess column types based on a sample of data.
+    """
+    book = load_workbook(path, use_iterators=True)
+    sheet = book.get_active_sheet()
+
+    rows = islice(sheet.iter_rows(), 0, sample_size + 1)
+    rows.next()
+
+    columns = zip(*rows)
+    column_types = []
+
+    for column in columns:
+        values = [c.internal_value for c in column]
+
+        t = determine_column_type([v.__class__ for v in values])
+
+        if t is float:
+            t = determine_number_type(values) 
+        elif t is datetime.datetime:
+            t = determine_date_type(values)
+
+        column_types.append(t)
+
+    return [c.__name__ if c else None for c in column_types]
 

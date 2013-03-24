@@ -41,7 +41,7 @@ No, PANDA is a place to store and search data, but not a way of publishing it.
 So is this like Caspio?
 -----------------------
 
-No, PANDA does produce graphics or interactives.
+No, PANDA does not produce graphics or interactives.
 
 So is this like BuzzData?
 -------------------------
@@ -51,7 +51,7 @@ Sort of, but PANDA is self-hosted, open source and designed specifically for new
 Is my data safe?
 ----------------
 
-As safe as we can make it, though the safety of your data is far more dependent on `backups <backups.html>`_, server stability, etc. then on choices made while developing PANDA.
+As safe as we can make it, though the safety of your data is far more dependent on :doc:`backups <backups>`, server stability, etc. then on choices made while developing PANDA.
 
 How is it licensed?
 -------------------
@@ -64,7 +64,7 @@ Hosting questions
 Who hosts the PANDA project?
 ----------------------------
 
-You do. We offer instructions for `hosting on Amazon's EC2 service <amazon.html>`_ or `hosting on your own servers <self-install.html>`_. In order not to create a sustainability problem when the grant ends, PANDA is not available as a service.
+You do. We offer instructions for :doc:`hosting on Amazon's EC2 service <amazon>` or :doc:`hosting on your own servers <self-install>`. In order not to create a sustainability problem when the grant ends, PANDA is not available as a service.
 
 How much does hosting on Amazon EC2 cost?
 -----------------------------------------
@@ -76,7 +76,7 @@ Very small organizations can also try running PANDA on an EC2 "micro", at a cost
 Does hosting on Amazon EC2 open up security issues?
 ---------------------------------------------------
 
-It depends on how zealous you are about security. A PANDA in a properly secured EC2 environment (i.e. firewalled for your organization and with `SSL configured <ssl.html>`_) is a pretty secure beast. However, as with any hosted platform, there is no technical way to gaurantee an employee of Amazon isn't snooping.
+It depends on how zealous you are about security. A PANDA in a properly secured EC2 environment (i.e. firewalled for your organization and with :doc:`SSL configured <ssl>`) is a pretty secure beast. However, as with any hosted platform, there is no technical way to gaurantee an employee of Amazon isn't snooping.
 
 Does hosting on Amazon EC2 create privacy or legal issues?
 ----------------------------------------------------------
@@ -89,7 +89,7 @@ Technical questions
 What platforms does PANDA run on?
 ---------------------------------
 
-PANDA requires `Ubuntu <http://www.ubuntu.com/>`_ 11.10. We anticipate upgrading this requirement to Ubuntu 12.04 LTS before the end of the grant.
+PANDA requires `Ubuntu <http://www.ubuntu.com/>`_ 12.04. This is a Long-Term Support release of Ubuntu, meaning it will be supported with patches by Canonical for five-years.
 
 Support for other platforms is unlikely, but not totally out of the question.
 
@@ -103,7 +103,7 @@ Obviously nothing is actually stopping you from installing other stuff on the sa
 Can I run PANDA on that old Dell under my desk?
 -----------------------------------------------
 
-Very likely! If it can run Ubuntu 11.10 it can probably run PANDA. We don't have "minimum requirements", but the specs of an EC2 small are:
+Very likely! If it can run Ubuntu 12.04 it can probably run PANDA. We don't have "minimum requirements", but the specs of an EC2 small are:
 
 * 1.7 GB RAM
 * 1.6 ghz single-core processor
@@ -114,7 +114,7 @@ Any PC manufactured in the last five years should easily exceed these specificat
 Does the PANDA have an API?
 ---------------------------
 
-Yes, see our `API documentation <api.html>`_.
+Yes, see our :doc:`API documentation <api>`.
 
 Can I use PANDA to power a news application?
 --------------------------------------------

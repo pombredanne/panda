@@ -14,7 +14,7 @@ env.repository_url = 'git://github.com/pandaproject/panda.git'
 env.hosts = ['panda.beta.tribapps.com']
 env.vars = 'DEPLOYMENT_TARGET="deployed"'
 
-env.local_solr = '/usr/local/Cellar/solr/3.4.0/libexec/example'
+env.local_solr = 'apache-solr-3.4.0/example'
 env.local_solr_home = '/var/solr'
 
 env.local_test_email = 'panda@pandaproject.net'
@@ -179,6 +179,7 @@ def reset_solr():
     sudo('rm -rf %(solr_path)s/pandadata/data' % env)
 
     sudo('cp %(path)s/setup_panda/data_schema.xml %(solr_path)s/pandadata/conf/schema.xml' % env)
+    sudo('cp %(path)s/setup_panda/english_names.txt %(solr_path)s/pandadata/conf/english_names.txt' % env)
     sudo('cp %(path)s/setup_panda/solrconfig.xml %(solr_path)s/pandadata/conf/solrconfig.xml' % env)
     sudo('cp %(path)s/setup_panda/panda.jar %(solr_path)s/pandadata/lib/panda.jar' % env)
     sudo('rm -rf %(solr_path)s/pandadata/data' % env)
@@ -189,6 +190,7 @@ def reset_solr():
     sudo('rm -rf %(solr_path)s/pandadata_test/data' % env)
 
     sudo('cp %(path)s/setup_panda/data_schema.xml %(solr_path)s/pandadata_test/conf/schema.xml' % env)
+    sudo('cp %(path)s/setup_panda/english_names.txt %(solr_path)s/pandadata_test/conf/english_names.txt' % env)
     sudo('cp %(path)s/setup_panda/solrconfig.xml %(solr_path)s/pandadata_test/conf/solrconfig.xml' % env)
     sudo('cp %(path)s/setup_panda/panda.jar %(solr_path)s/pandadata_test/lib/panda.jar' % env)
     sudo('rm -rf %(solr_path)s/pandadata_test/data' % env)
@@ -210,6 +212,14 @@ def reset_solr():
     sudo('chown -R solr:solr %(solr_path)s' % env)
     sudo('service solr start')
 
+def reset_jumpstart():
+    """
+    Reset the configuration to run the jumpstart server.
+    """
+    sudo('service uwsgi stop')
+    sudo('sudo cp %(path)s/setup_panda/uwsgi_jumpstart.conf /etc/init/uwsgi.conf' % env)
+    sudo('service uwsgi start')
+
 """
 Commands - Local development
 """
@@ -229,6 +239,7 @@ def local_reset_database():
     local('python manage.py syncdb --noinput' % env)
     local('python manage.py migrate --noinput' % env)
     local('python manage.py loaddata panda/fixtures/init_panda.json' % env)
+    local('python manage.py loaddata panda/fixtures/test_users.json' % env)
 
 def local_reset_solr():
     """
@@ -244,6 +255,7 @@ def local_reset_solr():
     local('cp setup_panda/panda.jar %(local_solr_home)s/pandadata/lib/panda.jar' % env)
     local('cp setup_panda/solrconfig.xml %(local_solr_home)s/pandadata/conf/solrconfig.xml' % env)
     local('cp setup_panda/data_schema.xml %(local_solr_home)s/pandadata/conf/schema.xml' % env)
+    local('cp setup_panda/english_names.txt %(local_solr_home)s/pandadata/conf/english_names.txt' % env)
 
     # data_test
     local('mkdir -p %(local_solr_home)s/pandadata_test/conf' % env)
@@ -253,6 +265,7 @@ def local_reset_solr():
     local('cp setup_panda/panda.jar %(local_solr_home)s/pandadata_test/lib/panda.jar' % env)
     local('cp setup_panda/solrconfig.xml %(local_solr_home)s/pandadata_test/conf/solrconfig.xml' % env)
     local('cp setup_panda/data_schema.xml %(local_solr_home)s/pandadata_test/conf/schema.xml' % env)
+    local('cp setup_panda/english_names.txt %(local_solr_home)s/pandadata_test/conf/english_names.txt' % env)
 
     # datasets
     local('mkdir -p %(local_solr_home)s/pandadatasets/conf' % env)
@@ -297,7 +310,7 @@ def make_fixtures():
     local('curl --data-binary "{ \\"delete\\": { \\"query\\": \\"*:*\\" } }" -H "Content-type:application/xml" "http://localhost:8983/solr/datasets/update?commit=true"')
 
     local('curl -H "PANDA_EMAIL: %(local_test_email)s" -H "PANDA_API_KEY: %(local_test_api_key)s" -H "Content-Type: application/json" --data-binary "{ \\"name\\": \\"Test\\" }" "http://localhost:8000/api/1.0/dataset/"' % env)
-    local('curl -H "PANDA_EMAIL: %(local_test_email)s" -H "PANDA_API_KEY: %(local_test_api_key)s" -F file=@test_data/contributors.csv -F dataset_slug=test "http://localhost:8000/upload/"' % env)
+    local('curl -H "PANDA_EMAIL: %(local_test_email)s" -H "PANDA_API_KEY: %(local_test_api_key)s" -F file=@test_data/contributors.csv -F dataset_slug=test "http://localhost:8000/data_upload/"' % env)
     local('curl -H "PANDA_EMAIL: %(local_test_email)s" -H "PANDA_API_KEY: %(local_test_api_key)s" "http://localhost:8000/api/1.0/dataset/test/import/1/"' % env)
 
     mock_xhr_responses = ['window.MOCK_XHR_RESPONSES = {};']
@@ -323,4 +336,10 @@ def make_fixtures():
     # Task
     with open('%(local_test_xhr_path)s' % env, 'w') as f:
         f.write('\n'.join(mock_xhr_responses))
+
+def coverage():
+    local('coverage erase')
+    local('coverage run --source panda manage.py test panda')
+    local('coverage html --omit "panda/migrations/*,panda/tests/*" -d coverage_html')
+    local('open coverage_html/index.html')
 

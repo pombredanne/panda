@@ -1,8 +1,7 @@
 PANDA.views.Login = Backbone.View.extend({
-    el: $("#content"),
-    
     events: {
-        "submit #login-form":   "login"
+        "submit #login-form":           "login",
+        "click #send-forgot-password":  "send_forgot_password"
     },
 
     next: null,
@@ -13,13 +12,6 @@ PANDA.views.Login = Backbone.View.extend({
 
     reset: function(next) {
         this.next = next;
-
-        // Ensure the sidebar is hidden
-        // Normally this happens during authentication, but if the loser
-        // moves to the login page from an unathenticated page that
-        // may never happen.
-        $("#sidebar").hide();
-
         this.render();
     },
 
@@ -28,7 +20,17 @@ PANDA.views.Login = Backbone.View.extend({
 
         var context = PANDA.utils.make_context({ email: email })
 
-        this.el.html(PANDA.templates.login(context));
+        this.$el.html(PANDA.templates.login(context));
+
+        $("#forgot-password-form").keypress(_.bind(function(e) {
+            if (e.keyCode == 13 && e.target.type != "textarea") {
+                this.send_forgot_password(); 
+            }
+        }, this));
+
+        $('#modal-forgot-password').on('shown', function () {
+            $("#forgot-email").focus();
+        })
     },
 
     validate: function() {
@@ -66,8 +68,11 @@ PANDA.views.Login = Backbone.View.extend({
                 if (!_.isUndefined(this.next) && !_.isNull(this.next)) {
                     window.location.hash = this.next;
                 } else {
-                    Redd.goto_search();
-                    window.scroll(0, 0);
+                    if (data.show_login_help) {
+                        Redd.goto_welcome();
+                    } else {
+                        Redd.goto_search("all");
+                    }
                 }
             }, this),
             error: function(xhr, status, error) {
@@ -84,6 +89,42 @@ PANDA.views.Login = Backbone.View.extend({
         });
 
         return false;
+    },
+
+    validate_forgot_password: function() {
+        var data = $("#forgot-password-form").serializeObject();
+        var errors = {};
+
+        if (!data["email"]) {
+            errors["email"] = ["Please enter your email."];
+        }
+
+        return errors;
+    },
+
+    send_forgot_password: function() {
+        var errors = this.validate_forgot_password();
+
+        if (!_.isEmpty(errors)) {
+            $("#forgot-password-form").show_errors(errors, "Error!");
+        
+            return false;
+        }
+
+        $.ajax({
+            url: '/forgot_password/',
+            dataType: 'json',
+            type: 'POST',
+            data: $("#forgot-password-form").serialize(),
+            success: _.bind(function(data, status, xhr) {
+                bootbox.alert("Email sent.");
+            }, this),
+            error: function(xhr, status, error) {
+                bootbox.alert(error);
+            }
+        });
+        
+        $("#modal-forgot-password").modal("hide");
     }
 });
 

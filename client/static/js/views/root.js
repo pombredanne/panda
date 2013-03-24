@@ -4,7 +4,11 @@ PANDA.views.Root = Backbone.View.extend({
      *
      * A single instance of this object exists in the global namespace as "Redd".
      */
-    el: $("body"),
+    el: "body",
+
+    events: {
+        "click #navbar-notifications > a":   "clear_unread_notifications"
+    },
 
     views: {},
 
@@ -23,6 +27,9 @@ PANDA.views.Root = Backbone.View.extend({
         // Track Ajax events
         this.track_ajax_events();
 
+        // Handle CSRF cookies for POST data
+        this.configure_csrf_handling();
+
         // Override Backbone's sync handler with the authenticated version
         Backbone.noAuthSync = Backbone.sync;
         Backbone.sync = _.bind(this.sync, this);
@@ -36,8 +43,6 @@ PANDA.views.Root = Backbone.View.extend({
         // Configure the global navbar
         this.configure_navbar();
 
-        $("#navbar-notifications .clear-unread").live("click", _.bind(this.clear_unread_notifications, this));
-
         // Setup occasional updates of notifications
         this.notifications_refresh_timer_id = window.setInterval(this.refresh_notifications, PANDA.settings.NOTIFICATIONS_INTERVAL);
 
@@ -49,8 +54,19 @@ PANDA.views.Root = Backbone.View.extend({
             $("#loading-indicator img").show();
         });
 
-        $(document).ajaxComplete(function() {
+        $(document).ajaxStop(function() {
             $("#loading-indicator img").hide();
+        });
+    },
+
+    configure_csrf_handling: function() {
+        /*
+         * Always attach CSRF token to requests.
+         */
+        $.ajaxSetup({ 
+             beforeSend: function(xhr, settings) {
+                xhr.setRequestHeader("X-CSRFToken", $.cookie('csrftoken'));
+             } 
         });
     },
 
@@ -72,19 +88,19 @@ PANDA.views.Root = Backbone.View.extend({
             return true;
         }
 
+        var id = $.cookie("id");
         var email = $.cookie("email");
-        var api_key = $.cookie("api_key");
         var is_staff = $.cookie("is_staff") === "true" ? true : false;
 
-        if (email && api_key) {
+        if (email) {
             this.set_current_user(new PANDA.models.User({
+                "id": id,
                 "email": email,
-                "api_key": api_key,
                 "is_staff": is_staff
             }));
 
             // Fetch latest notifications (doubles as a verification of the user's credentials)
-            this.refresh_notifications();
+            this.refresh_notifications(); 
 
             return true;
         }
@@ -108,13 +124,14 @@ PANDA.views.Root = Backbone.View.extend({
         this._current_user = user;
 
         if (this._current_user) {
-            $.cookie("email", this._current_user.get("email"));
-            $.cookie("api_key", this._current_user.get("api_key"));
-            $.cookie("is_staff", this._current_user.get("is_staff").toString());
+            $.cookie("id", this._current_user.get("id"), { expires: 30 });
+            $.cookie("email", this._current_user.get("email"), { expires: 30 });
+            $.cookie("is_staff", this._current_user.get("is_staff").toString(), { expires: 30 });
         } else {
+            $.cookie("id", null);
             $.cookie("email", null);
-            $.cookie("api_key", null);
             $.cookie("is_staff", null);
+            $.cookie("activity_recorded", null)
         }
             
         this.configure_navbar();
@@ -146,7 +163,6 @@ PANDA.views.Root = Backbone.View.extend({
         dfd.fail(_.bind(function(responseXhr, status, error) {
             if (responseXhr.status == 401) {
                 this.set_current_user(null);
-
                 this.goto_login(window.location.hash);
             }
         }, this));
@@ -170,11 +186,12 @@ PANDA.views.Root = Backbone.View.extend({
         this.authenticate();
 
         // Handle authentication failures
-        dfd.fail(function(xhr, status, error) {
+        dfd.fail(_.bind(function(xhr, status, error) {
             if (xhr.status == 401) {
+                this.set_current_user(null);
                 this.goto_login(window.location.hash);
             }
-        });
+        }, this));
 
         // Trigger original error handler after checking for auth issues
         dfd.fail(options.error);
@@ -183,6 +200,27 @@ PANDA.views.Root = Backbone.View.extend({
         dfd.request = Backbone.noAuthSync(method, model, options);
 
         return dfd;
+    },
+
+    log_user_activity: function() {
+        /*
+         * Record that the user was on-site.
+         */
+        if (!this._current_user) {
+            return;
+        }
+
+        var activity_recorded = $.cookie("activity_recorded") === "true" ? true : false;
+
+        if (!activity_recorded) {
+            activity_log = new PANDA.models.ActivityLog();
+            activity_log.save();
+
+            var today = new Date();
+            var midnight = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 0, 0, 0);
+
+            $.cookie("activity_recorded", "true", { expires: midnight });
+        }
     },
 
     configure_navbar: function(no_scroll) {
@@ -196,53 +234,49 @@ PANDA.views.Root = Backbone.View.extend({
             $("body").css("background-color", "#fff");
 
             $("#navbar-email a").text(this._current_user.get("email"));
+            $("#navbar-email a").attr("href", "#user/" + this._current_user.get("id"));
 
             // Categories
             $("#navbar-categories .dropdown-menu").empty();
-            $("#navbar-categories .dropdown-menu").append('<li><a href="#datasets">All datasets</a></li>');
+            $("#navbar-categories .dropdown-menu").append('<li><a href="#datasets/all">All datasets</a></li>');
 
             if (this._categories.length > 0) {
                 $("#navbar-categories .dropdown-menu").append('<li class="divider"></li>');
                 
                 this._categories.each(function(category) {
                     if (category.get("dataset_count") > 0) {
-                        $("#navbar-categories .dropdown-menu").append('<li class="category"><a href="#category/' + category.get("slug") + '">' + category.get("name") + ' (' + category.get("dataset_count") + ')</a></li>');
+                        $("#navbar-categories .dropdown-menu").append('<li class="category"><a href="#datasets/' + category.get("slug") + '">' + category.get("name") + ' (' + category.get("dataset_count") + ')</a></li>');
                     }
                 });
             }
 
             // Notifications
-            $("#navbar-notifications .dropdown-menu").empty();
+            $("#navbar-notifications .dropdown-menu ul").empty();
+
+            var unread_count = 0;
 
             if (this._current_user.notifications.length > 0) {
-                $("#navbar-notifications .count").addClass("important");
 
                 this._current_user.notifications.each(function(note) {
-                    var related_dataset = note.get("related_dataset");
+                    var unread = note.get("read_at") ? "" : " unread"
 
-                    if (related_dataset) {
-                        var slash = related_dataset.lastIndexOf("/", related_dataset.length - 2);
-                        var link = "#dataset/" + related_dataset.substring(slash + 1, related_dataset.length - 1);
-                    } else {
-                        var link = "#";
-                    }
+                    if (unread) { 
+                        unread_count += 1
+                    };
 
-                    $("#navbar-notifications .dropdown-menu").append('<li><a href="' + link + '">' + note.get("message") + '</a></li>');
-                });
+                    $("#navbar-notifications .dropdown-menu ul").append('<li class="' + unread + '"><a href="' + note.get("url") + '" data-notification-id="' + note.id + '">' + unescape(note.get("message")) + '</a></li>');
+                }, this);
             } else {
-                $("#navbar-notifications .count").removeClass("important");
-                $("#navbar-notifications .dropdown-menu").append('<li><a href="#">No new notifications</a></li>');
-            }
-            
-            $("#navbar-notifications .dropdown-menu").append('<li class="divider"></li>');
-
-            if (this._current_user.notifications.models.length > 0) {
-                $("#navbar-notifications .dropdown-menu").append('<li class="clear-unread"><a href="#">Clear unread</a></li>');
+                $("#navbar-notifications .dropdown-menu ul").append('<li><a href="#"><em>No notifications</em></a></li>');
             }
 
-            $("#navbar-notifications .dropdown-menu").append('<li><a href="javascript:alert(\'View all notifications (TODO)\');">View all notifications</a></li>');
+            if (unread_count) {
+                $("#navbar-notifications .count").addClass("badge-info");
+            } else {
+                $("#navbar-notifications .count").removeClass("badge-info");
+            }
             
-            $("#navbar-notifications .count").text(this._current_user.notifications.length);
+            $("#navbar-notifications .count").text(unread_count);
 
             $("#navbar-admin").toggle(this._current_user.get("is_staff"));
             $(".navbar").show();
@@ -259,6 +293,7 @@ PANDA.views.Root = Backbone.View.extend({
         if (this._current_user) {
             this._current_user.refresh_notifications(_.bind(function() {
                 this.configure_navbar();
+                this.log_user_activity();
             }, this));
         }
     },
@@ -267,22 +302,34 @@ PANDA.views.Root = Backbone.View.extend({
         /*
          * Marks all of the current user's notifications as read.
          */
-        this._current_user.mark_notifications_read(_.bind(function() {
-            this.configure_navbar();
-        }, this));
+        if ($("#navbar-notifications").hasClass("open")) {
+            $("#navbar-notifications .count").removeClass("badge-info");
+            $("#navbar-notifications .count").text("0");
 
-        return false;
+            this._current_user.mark_notifications_read();
+        } else {
+            $("#navbar-notifications .dropdown-menu ul li").removeClass("unread");
+        }
+
+        return true;
     },
 
-    get_or_create_view: function(name, options) {
+    get_or_create_view: function(name) {
         /*
          * Register each view as it is created and never create more than one.
          */
+        // Clear detritus from previous views
+        $(".tooltip").remove();
+        $(".modal").remove()
+        $(".modal-backdrop").remove()
+        
+        window.scrollTo(0, 0);
+
         if (name in this.views) {
             return this.views[name];
         }
 
-        this.views[name] = new PANDA.views[name](options);
+        this.views[name] = new PANDA.views[name]({ el: PANDA.settings.CONTENT_ELEMENT });
 
         return this.views[name];
     },
@@ -294,6 +341,13 @@ PANDA.views.Root = Backbone.View.extend({
         this._router.navigate("activate/" + activation_key);
     },
 
+        goto_reset_password: function(activation_key) {
+        this.current_content_view = this.get_or_create_view("ResetPassword");
+        this.current_content_view.reset(activation_key);
+
+        this._router.navigate("reset-password/" + activation_key);
+    },
+
     goto_login: function(next) {
         this.current_content_view = this.get_or_create_view("Login");
         this.current_content_view.reset(next);
@@ -302,12 +356,20 @@ PANDA.views.Root = Backbone.View.extend({
     },
     
     goto_logout: function() {
+        // Request a session logout
+        $.ajax({
+            url: '/logout/',
+            type: 'POST'
+        });
+
+        // Blow away local cookies
         this.set_current_user(null);
 
+        // Back to the login screen
         this.goto_login();
     },
 
-    goto_search: function(query, limit, page) {
+    goto_search: function(category, query, since, limit, page) {
         // This little trick avoids rerendering the Search view if
         // its already visible. Only the nested results need to be
         // rerendered.
@@ -317,23 +379,29 @@ PANDA.views.Root = Backbone.View.extend({
 
         if (!(this.current_content_view instanceof PANDA.views.Search)) {
             this.current_content_view = this.get_or_create_view("Search");
-            this.current_content_view.reset(query);
+            this.current_content_view.reset(category, query);
         }
 
-        this.current_content_view.search(query, limit, page);
+        category = category || "all";
 
-        var path = "search/";
+        this.current_content_view.search(category, query, since, limit, page);
+
+        var path = "search/" + category;
 
         if (query) {
-            path += query;
-        }
-        
-        if (limit) {
-            path += "/" + limit;
-        }
+            path += "/" + query;
 
-        if (page) {
-            path += "/" + page;
+            if (since) {
+                path += "/" + since;
+
+                if (limit) {
+                    path += "/" + limit;
+
+                    if (page) {
+                        path += "/" + page;
+                    }
+                }
+            }
         }
 
         this._router.navigate(path);
@@ -362,22 +430,18 @@ PANDA.views.Root = Backbone.View.extend({
         this.current_content_view = this.get_or_create_view("DatasetsSearch");
         this.current_content_view.reset(category, query, limit, page);
 
-        if (category) {
-            var path = "category/" + category;
-        } else {
-            var path = "datasets";
-        }
+        var path = "datasets/" + category;
 
         if (query) {
             path += "/" + query;
-        }
-    
-        if (limit) {
-            path += "/" + limit;
-        }
 
-        if (page) {
-            path += "/" + page;
+            if (limit) {
+                path += "/" + limit;
+
+                if (page) {
+                    path += "/" + page;
+                }
+            }
         }
 
         this._router.navigate(path);
@@ -394,7 +458,7 @@ PANDA.views.Root = Backbone.View.extend({
         this._router.navigate("dataset/" + slug);
     },
 
-    goto_dataset_search: function(slug, query, limit, page) {
+    goto_dataset_search: function(slug, query, since, limit, page) {
         if (!this.authenticate()) {
             return;
         }
@@ -404,23 +468,92 @@ PANDA.views.Root = Backbone.View.extend({
             this.current_content_view.reset(slug, query);
         }
 
-        this.current_content_view.search(query, limit, page);
+        this.current_content_view.search(query, since, limit, page);
 
         var path = "dataset/" + slug + "/search";
 
         if (query) {
             path += "/" + query;
-        }
-        
-        if (limit) {
-            path += "/" + limit;
-        }
 
-        if (page) {
-            path += "/" + page;
+            if (since) {
+                path += "/" + since;
+
+                if (limit) {
+                    path += "/" + limit;
+
+                    if (page) {
+                        path += "/" + page;
+                    }
+                }
+            }
         }
 
         this._router.navigate(path);
+    },
+
+    goto_notifications: function(limit, page) {
+        if (!this.authenticate()) {
+            return;
+        }
+
+        this.current_content_view = this.get_or_create_view("Notifications");
+        this.current_content_view.reset(limit, page);
+
+        var path = "notifications";
+
+        if (limit) {
+            path += "/" + limit;
+
+            if (page) {
+                path += "/" + page;
+            }
+        }
+
+        this._router.navigate(path);
+    },
+
+    goto_user: function(id) {
+        if (!this.authenticate()) {
+            return;
+        }
+
+        this.current_content_view = this.get_or_create_view("User");
+        this.current_content_view.reset(id);
+
+        this._router.navigate("user/" + id);
+    },
+
+    goto_dashboard: function() {
+        if (!this.authenticate()) {
+            return;
+        }
+
+        this.current_content_view = this.get_or_create_view("Dashboard");
+        this.current_content_view.reset();
+
+        this._router.navigate("dashboard");
+    },
+
+    goto_welcome: function() {
+        if (!this.authenticate()) {
+            return;
+        }
+
+        this.current_content_view = this.get_or_create_view("Welcome");
+        this.current_content_view.reset();
+
+        this._router.navigate("welcome");
+    },
+
+    goto_fetch_export: function(id) {
+        if (!this.authenticate()) {
+            return;
+        }
+        
+        this.current_content_view = this.get_or_create_view("FetchExport");
+        this.current_content_view.reset(id);
+
+        this._router.navigate("export/" + id);
     },
 
     goto_not_found: function() {

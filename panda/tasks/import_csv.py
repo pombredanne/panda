@@ -2,13 +2,16 @@
 
 import logging
 from math import floor
+import time
 
 from csvkit import CSVKitReader
 from django.conf import settings
+from livesettings import config_value
 
 from panda import solr, utils
 from panda.exceptions import DataImportError
 from panda.tasks.import_file import ImportFileTask 
+from panda.utils.typecoercion import DataTyper
 
 SOLR_ADD_BUFFER_SIZE = 500
 
@@ -36,16 +39,22 @@ class ImportCSVTask(ImportFileTask):
         log = logging.getLogger(self.name)
         log.info('Beginning import, dataset_slug: %s' % dataset_slug)
 
-        dataset = Dataset.objects.get(slug=dataset_slug)
+        try:
+            dataset = Dataset.objects.get(slug=dataset_slug)
+        except Dataset.DoesNotExist:
+            log.warning('Import failed due to Dataset being deleted, dataset_slug: %s' % dataset_slug)
+
+            return
+
         upload = DataUpload.objects.get(id=upload_id)
 
         task_status = dataset.current_task
-        self.task_start(task_status, 'Preparing to import')
+        task_status.begin('Preparing to import')
 
         line_count = self._count_lines(upload.get_path())
 
         if self.is_aborted():
-            self.task_abort(task_status, 'Aborted during preperation')
+            task_status.abort('Aborted during preperation')
 
             log.warning('Import aborted, dataset_slug: %s' % dataset_slug)
 
@@ -57,6 +66,8 @@ class ImportCSVTask(ImportFileTask):
         reader.next()
 
         add_buffer = []
+        data_typer = DataTyper(dataset.column_schema)
+        throttle = config_value('PERF', 'TASK_THROTTLE')
 
         i = 0
 
@@ -77,22 +88,26 @@ class ImportCSVTask(ImportFileTask):
             if external_id_field_index is not None:
                 external_id = row[external_id_field_index]
 
-            data = utils.solr.make_data_row(dataset, row, external_id=external_id)
+            data = utils.solr.make_data_row(dataset, row, data_upload=upload, external_id=external_id)
+            data = data_typer(data, row)
 
             add_buffer.append(data)
 
             if i % SOLR_ADD_BUFFER_SIZE == 0:
                 solr.add(settings.SOLR_DATA_CORE, add_buffer)
+
                 add_buffer = []
 
-                self.task_update(task_status, '%.0f%% complete (estimated)' % floor(float(i) / float(line_count) * 100))
+                task_status.update('%.0f%% complete (estimated)' % floor(float(i) / float(line_count) * 100))
 
                 if self.is_aborted():
-                    self.task_abort(task_status, 'Aborted after importing %.0f%% (estimated)' % floor(float(i) / float(line_count) * 100))
+                    task_status.abort('Aborted after importing %.0f%% (estimated)' % floor(float(i) / float(line_count) * 100))
 
                     log.warning('Import aborted, dataset_slug: %s' % dataset_slug)
 
                     return
+
+                time.sleep(throttle)
 
         if add_buffer:
             solr.add(settings.SOLR_DATA_CORE, add_buffer)
@@ -102,15 +117,22 @@ class ImportCSVTask(ImportFileTask):
 
         f.close()
 
-        self.task_update(task_status, '100% complete')
+        task_status.update('100% complete')
 
         # Refresh dataset from database so there is no chance of crushing changes made since the task started
-        dataset = Dataset.objects.get(slug=dataset_slug)
+        try:
+            dataset = Dataset.objects.get(slug=dataset_slug)
+        except Dataset.DoesNotExist:
+            log.warning('Import could not be completed due to Dataset being deleted, dataset_slug: %s' % dataset_slug)
+
+            return
 
         if not dataset.row_count:
             dataset.row_count = i
         else:
             dataset.row_count += i
+
+        dataset.column_schema = data_typer.schema
 
         dataset.save()
 
@@ -121,4 +143,6 @@ class ImportCSVTask(ImportFileTask):
         upload.save()
 
         log.info('Finished import, dataset_slug: %s' % dataset_slug)
+
+        return data_typer
 

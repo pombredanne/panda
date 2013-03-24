@@ -1,9 +1,12 @@
 PANDA.views.DatasetsResults = Backbone.View.extend({
+    search: null,
+
     initialize: function(options) {
         _.bindAll(this);
+    },
 
-        this.search = options.search;
-        this.search.datasets.bind("reset", this.render);
+    reset: function(search) {
+        this.search = search;
     },
 
     render: function() {
@@ -12,10 +15,13 @@ PANDA.views.DatasetsResults = Backbone.View.extend({
         context["query"] = this.search.query;
         context["category"] = this.search.category;
         context["datasets"] = this.search.datasets.results()["datasets"];
+        context["pager_unit"] = "dataset";
+        context["row_count"] = this.search.datasets.meta.total_count;
+        context["root_url"] = "#datasets/" + this.search.category + "/" + (this.search.query || "*");
 
-        this.el.html(PANDA.templates.datasets_results(context));
+        context["pager"] = PANDA.templates.inline_pager(context);
 
-        $('#datasets-results a[rel="tooltip"]').tooltip();
+        this.$el.html(PANDA.templates.datasets_results(context));
 
         // Enable result sorting
         $("#datasets-results table").tablesorter({

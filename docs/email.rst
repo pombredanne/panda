@@ -5,12 +5,12 @@ Configuring Email
 Getting an SMTP server
 ======================
 
-Before you configure PANDA you're going to need access to an SMTP server for sending email. There are several ways you can get access to one of these.
+Before you configure PANDA for email you're going to need access to an SMTP (email) server. There are several ways you can get access to one of these.
 
 Using your own SMTP
 -------------------
 
-If you're organization already has an SMTP server then you may be able to use it for PANDA. Note, however, that if you host PANDA on EC2 and your SMTP server is internal to your organization you may not be able to reach it. It's best to discuss this possibility with the IT staff in charge of your email servers.
+If your organization already has an SMTP server then you may be able to use it for PANDA. Note, however, that if you host PANDA on EC2 and your SMTP server is internal to your organization you may not be able to reach it. It's best to discuss this possibility with the IT staff in charge of your email servers.
 
 If you can use your own SMTP server then make sure you have its address, port number, username and password ready so you can fill them in later.
 
@@ -23,6 +23,7 @@ To sign up for CritSend visit `their website <http://www.critsend.com/>`_ and en
 
 Once you receive notification that your registration has been validated, you'll be able to use the following settings to configure your PANDA:
 
+* Enabled: ``True``
 * Host: ``smtp.critsend.com`` (if you're hosting on Amazon EC2 then use ``aws-smtp.critsend.com``)
 * Port: ``587``
 * User: ``YOUR_CRITSEND_USERNAME``
@@ -41,6 +42,7 @@ You'll need to `register for a new Gmail <http://www.gmail.com>`_. Do **not** us
 
 That's it. To use the Gmail SMTP servers, you'll use the following configuration for PANDA:
 
+* Enabled: ``True``
 * Host: ``smtp.gmail.com``
 * Port: ``587``
 * User: ``YOUR_NEW_EMAIL_ADDRESS``
@@ -57,9 +59,7 @@ Once you have your SMTP connection details ready. You're ready to configure your
 
 Replace ``localhost:8000`` with your PANDA's domain name.
 
-You'll be prompted to login. If this is you're first time you can use the default username, ``panda@pandaproject.net`` and the default password ``panda``.
-
-Once you've logged you'll see a list of configuration options. In the section titled "Email settings", fill in the details of your SMTP connection and then click "Update Settings".
+You'll be prompted to log in as an administrative user. Once logged in you'll see a list of configuration options. In the section titled "Email settings", fill in the details of your SMTP connection and then click "Update Settings".
 
 To test the new connection click the "Home" link at the top of the screen and then the link to "Add" a new User. Fill in your own email address and click Save. You should get an activation email in your inbox!
 

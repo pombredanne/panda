@@ -1,10 +1,8 @@
 #!/user/bin/env python
 
-from django.contrib.auth.models import User
 from django.db import models
 
-from panda.models.dataset import Dataset
-from panda.models.task_status import TaskStatus
+from panda.models.user_proxy import UserProxy
 
 NOTIFICATION_TYPE_CHOICES = (
     ('Info', 'Info'),
@@ -16,7 +14,7 @@ class Notification(models.Model):
     """
     A user notification related to a task.
     """
-    recipient = models.ForeignKey(User, related_name='notifications',
+    recipient = models.ForeignKey(UserProxy, related_name='notifications',
         help_text='The user who should receive this notification.')
     message = models.TextField(
         help_text='The message to deliver.')
@@ -26,10 +24,8 @@ class Notification(models.Model):
         help_text='When this notification was created')
     read_at = models.DateTimeField(null=True, blank=True, default=None,
         help_text='When this notification was read by the user.')
-    related_task = models.ForeignKey(TaskStatus, null=True, default=None,
-        help_text='A task related to this notification, if any.')
-    related_dataset = models.ForeignKey(Dataset, null=True, default=None,
-        help_text='A dataset related to this notification, if any.')
+    url = models.URLField(null=True, default=None,
+        help_text='A url to link to when displaying this notification.') 
 
     class Meta:
         app_label = 'panda'

@@ -1,6 +1,4 @@
 PANDA.views.Activate = Backbone.View.extend({
-    el: $("#content"),
-    
     events: {
         "submit #activation-form":   "activate"
     },
@@ -39,7 +37,7 @@ PANDA.views.Activate = Backbone.View.extend({
 
     render: function(data) {
         var context = PANDA.utils.make_context(data)
-        this.el.html(PANDA.templates.activate(context));
+        this.$el.html(PANDA.templates.activate(context));
     },
 
     validate: function() {
@@ -85,7 +83,12 @@ PANDA.views.Activate = Backbone.View.extend({
             data: $("#activation-form").serialize(),
             success: function(data, status, xhr) {
                 Redd.set_current_user(new PANDA.models.User(data));
-                Redd.goto_search();
+                
+                if (data.show_login_help) {
+                    Redd.goto_welcome();
+                } else {
+                    Redd.goto_search("all");
+                }
             },
             error: function(xhr, status, error) {
                 Redd.set_current_user(null);

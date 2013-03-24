@@ -9,7 +9,7 @@ from tastypie import fields
 from tastypie.authorization import DjangoAuthorization
 from tastypie.utils.urls import trailing_slash
 
-from panda.api.utils import PandaApiKeyAuthentication, PandaModelResource, PandaSerializer
+from panda.api.utils import PandaAuthentication, PandaModelResource, PandaSerializer
 from panda.models import Export
 
 class ExportResource(PandaModelResource):
@@ -19,14 +19,14 @@ class ExportResource(PandaModelResource):
     from panda.api.users import UserResource
 
     creator = fields.ForeignKey(UserResource, 'creator')
-    dataset = fields.ForeignKey('panda.api.datasets.DatasetResource', 'dataset')
+    dataset = fields.ForeignKey('panda.api.datasets.DatasetResource', 'dataset', null=True)
 
     class Meta:
         queryset = Export.objects.all()
         resource_name = 'export'
         allowed_methods = ['get']
 
-        authentication = PandaApiKeyAuthentication()
+        authentication = PandaAuthentication()
         authorization = DjangoAuthorization()
         serializer = PandaSerializer()
 
@@ -42,7 +42,8 @@ class ExportResource(PandaModelResource):
         """
         Download the original file that was uploaded.
         """
-        self.method_check(request, allowed=['get'])
+        # Allow POST so csrf token can come through
+        self.method_check(request, allowed=['get', 'post'])
         self.is_authenticated(request)
         self.throttle_check(request)
 

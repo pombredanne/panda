@@ -1,0 +1,26 @@
+<tr>
+    <td colspan="3"></td>
+    <td class="range">
+        <% if (column["min"] !== null && column["max"] !== null) { %>
+        <em>Range:&nbsp;&nbsp;<strong><%= format_min_max(column, "min") %></strong>&nbsp;&nbsp;to&nbsp;&nbsp;<strong><%= format_min_max(column, "max") %></strong></em>
+        <% } %>
+    </td>
+</tr>
+
+<tr>
+    <td class="remove-cell"><a class="remove-filter" href="#" onclick="return false;">Remove</a>&nbsp;</td>
+    <td class="name-cell"><strong><%= column["name"] %></strong>&nbsp;</td>
+    <td class="operator-cell">
+        <select class="operator" data-last-value="<%= query["operator"] %>">
+            <% _.each(operations, function(op, name) { %>
+                <option value="<%= name %>" <% if (query["value"] && query["operator"] == name) { %>selected="selected"<% } %>><%= op["name"] %></option>
+            <% }); %>
+        </select>
+    </td>
+    <td class="widget-cell">
+        <span class="widget"><%= widget_template(query) %></span>&nbsp;
+        <div class="help-wrapper">
+            <span class="help-inline"></span>
+        </div>
+    </td>
+</tr>

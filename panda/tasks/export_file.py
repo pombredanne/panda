@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
-from datetime import datetime
+import logging
 import os.path
+import traceback
 
 from celery.contrib.abortable import AbortableTask
 from django.conf import settings
-from livesettings import config_value
 
-from panda.utils.mail import send_mail
+from panda.utils.notifications import notify
 
 class ExportFileTask(AbortableTask):
     """
@@ -17,50 +17,6 @@ class ExportFileTask(AbortableTask):
 
     # All subclasses should be within this namespace
     name = 'panda.tasks.export'
-
-    def task_start(self, task_status, message):
-        """
-        Mark that task has begun.
-        """
-        task_status.status = 'STARTED' 
-        task_status.start = datetime.utcnow()
-        task_status.message = message 
-        task_status.save()
-
-    def task_update(self, task_status, message):
-        """
-        Update task status message.
-        """
-        task_status.message = message 
-        task_status.save()
-
-    def task_abort(self, task_status, message):
-        """
-        Mark that task has aborted.
-        """
-        task_status.status = 'ABORTED'
-        task_status.end = datetime.utcnow()
-        task_status.message = message
-        task_status.save()
-
-    def task_complete(self, task_status, message):
-        """
-        Mark that task has completed.
-        """
-        task_status.status = 'SUCCESS'
-        task_status.end = datetime.utcnow()
-        task_status.message = message
-        task_status.save()
-
-    def task_exception(self, task_status, message, formatted_traceback):
-        """
-        Mark that task raised an exception
-        """
-        task_status.status = 'FAILURE'
-        task_status.end = datetime.utcnow()
-        task_status.message = message 
-        task_status.traceback = formatted_traceback
-        task_status.save()
 
     def run(self, dataset_slug, *args, **kwargs):
         """
@@ -72,26 +28,57 @@ class ExportFileTask(AbortableTask):
         """
         Save final status, results, etc.
         """
-        from panda.models import Dataset, Export, Notification
+        from panda.models import Dataset
 
-        dataset = Dataset.objects.get(slug=args[0])
-        task_status = dataset.current_task
+        log = logging.getLogger(self.name)
+
+        try:
+            dataset = Dataset.objects.get(slug=args[0])
+        except Dataset.DoesNotExist:
+            log.warning('Can not send export notifications due to Dataset being deleted, dataset_slug: %s' % args[0])
+
+            return
+        
+        query = kwargs.get('query', None)
+
+        self.send_notifications(dataset, query, retval, einfo) 
+
+    def send_notifications(self, dataset, query, retval, einfo):
+        """
+        Send user notifications this task has finished.
+        """
+        from panda.models import Export
+
+        task_status = dataset.current_task 
+
+        export = None
+        extra_context = {
+            'query': query,
+            'related_dataset': dataset
+        }
+        url = None
 
         if einfo:
-            error_detail = u'\n'.join([einfo.traceback, unicode(retval)])
+            if hasattr(einfo, 'traceback'):
+                tb = einfo.traceback
+            else:
+                tb = ''.join(traceback.format_tb(einfo[2]))
 
-            self.task_exception(
-                task_status,
+            task_status.exception(
                 'Export failed',
-                error_detail)
-            
-            email_subject = 'Export failed: %s' % dataset.name
-            email_message = 'Export failed: %s:\n%s' % (dataset.name, error_detail)
-            notification_message = 'Export failed: <strong>%s</strong>' % dataset.name
+                u'%s\n\nTraceback:\n%s' % (unicode(retval), tb)
+            )
+
+            template_prefix = 'export_failed'
+            extra_context['error'] = unicode(retval)
+            extra_context['traceback'] = tb
             notification_type = 'Error'
+        elif self.is_aborted():
+            template_prefix = 'export_aborted'
+            notification_type = 'Info'
         else:
-            self.task_complete(task_status, 'Export complete')
-            
+            task_status.complete('Export complete')
+
             export = Export.objects.create(
                 filename=retval,
                 original_filename=retval,
@@ -99,20 +86,20 @@ class ExportFileTask(AbortableTask):
                 creator=task_status.creator,
                 creation_date=task_status.start,
                 dataset=dataset)
-            
-            email_subject = 'Export complete: %s' % dataset.name
-            email_message = 'Export complete: %s. Download your results:\n\nhttp://%s/api/1.0/export/%i/download/' % (dataset.name, config_value('DOMAIN', 'SITE_DOMAIN', export.id), export.id)
-            notification_message = 'Export complete: <strong>%s</strong>' % dataset.name
-            notification_type = 'Info'
 
-        if task_status.creator:
-            Notification.objects.create(
-                recipient=task_status.creator,
-                related_task=task_status,
-                related_dataset=dataset,
-                message=notification_message,
-                type=notification_type
-            )
+            extra_context['related_export'] = export
+
+            url = '#export/%i' % export.id
+
+            template_prefix = 'export_complete'
+            notification_type = 'Info'
             
-            send_mail(email_subject, email_message, [task_status.creator.username])
+        if task_status.creator:
+            notify(
+                task_status.creator,
+                template_prefix,
+                notification_type,
+                url,
+                extra_context=extra_context
+            )
 

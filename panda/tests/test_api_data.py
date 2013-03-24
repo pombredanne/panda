@@ -1,18 +1,22 @@
 #!/usr/bin/env python
 
+from time import sleep
+
 from django.conf import settings
 from django.test import TransactionTestCase
 from django.test.client import Client
 from django.utils import simplejson as json
+from django.utils.timezone import now
 from tastypie.bundle import Bundle
 from tastypie.exceptions import BadRequest
 
+from panda import solr
 from panda.api.data import DataResource, DataValidation
-from panda.models import Dataset
+from panda.models import Category, Dataset
 from panda.tests import utils
 
 class TestDataValidation(TransactionTestCase):
-    fixtures = ['init_panda.json']
+    fixtures = ['init_panda.json', 'test_users.json']
 
     def setUp(self):
         self.validator = DataValidation()
@@ -42,7 +46,7 @@ class TestDataValidation(TransactionTestCase):
         self.assertIn('external_id', errors)
 
 class TestAPIData(TransactionTestCase):
-    fixtures = ['init_panda.json']
+    fixtures = ['init_panda.json', 'test_users.json']
 
     def setUp(self):
         settings.CELERY_ALWAYS_EAGER = True
@@ -59,8 +63,6 @@ class TestAPIData(TransactionTestCase):
     
     def test_get(self):
         self.dataset.import_data(self.user, self.upload, 0)
-
-        utils.wait()
 
         response = self.client.get('/api/1.0/dataset/%s/data/' % self.dataset.slug, **self.auth_headers)
         self.assertEqual(response.status_code, 200)
@@ -81,15 +83,11 @@ class TestAPIData(TransactionTestCase):
     def test_get_404(self):
         self.dataset.import_data(self.user, self.upload, 0)
 
-        utils.wait()
-
         response = self.client.get('/api/1.0/dataset/%s/data/not-a-valid-id/' % self.dataset.id, **self.auth_headers)
         self.assertEqual(response.status_code, 404)
 
     def test_list(self):
         self.dataset.import_data(self.user, self.upload, 0)
-
-        utils.wait()
 
         response = self.client.get('/api/1.0/data/', **self.auth_headers)
 
@@ -141,8 +139,6 @@ class TestAPIData(TransactionTestCase):
     def test_create(self):
         self.dataset.import_data(self.user, self.upload, 0)
 
-        utils.wait()
-
         new_data = {
             'data': ['5', 'A', 'B', 'C']
         }
@@ -163,8 +159,6 @@ class TestAPIData(TransactionTestCase):
 
     def test_create_bulk(self):
         self.dataset.import_data(self.user, self.upload, 0)
-
-        utils.wait()
 
         new_data = { 'objects': [
             {
@@ -200,8 +194,6 @@ class TestAPIData(TransactionTestCase):
     def test_create_makes_sample(self):
         self.dataset.import_data(self.user, self.upload, 0)
 
-        utils.wait()
-
         new_data = {
             'data': ['5', 'A', 'B', 'C']
         }
@@ -217,8 +209,6 @@ class TestAPIData(TransactionTestCase):
 
     def test_created_search(self):
         self.dataset.import_data(self.user, self.upload, 0)
-
-        utils.wait()
 
         new_data = {
             'data': ['5', 'Flibbity!', 'B', 'C']
@@ -241,8 +231,6 @@ class TestAPIData(TransactionTestCase):
     def test_create_too_few_fields(self):
         self.dataset.import_data(self.user, self.upload, 0)
 
-        utils.wait()
-
         new_data = {
             'data': ['5', 'Mr.', 'PANDA']
         }
@@ -256,8 +244,6 @@ class TestAPIData(TransactionTestCase):
     def test_create_too_many_fields(self):
         self.dataset.import_data(self.user, self.upload, 0)
 
-        utils.wait()
-
         new_data = {
             'data': ['5', 'Mr.', 'PANDA', 'PANDA Project', 'PANDAs everywhere']
         }
@@ -270,8 +256,6 @@ class TestAPIData(TransactionTestCase):
 
     def test_update(self):
         self.dataset.import_data(self.user, self.upload, 0)
-
-        utils.wait()
 
         update_data = {
             'dataset': '/api/1.0/dataset/%s/' % self.dataset.slug,
@@ -296,35 +280,6 @@ class TestAPIData(TransactionTestCase):
 
     def test_update_bulk(self):
         self.dataset.import_data(self.user, self.upload, 0)
-
-        utils.wait()
-
-        new_data = { 'objects': [
-            {
-                'data': ['1', 'A', 'B', 'C'],
-                'external_id': '1'
-            },
-            {
-                'data': ['2', 'D', 'E', 'F'],
-                'external_id': '2'
-            }
-        ]}
-
-        response = self.client.put('/api/1.0/dataset/%s/data/' % self.dataset.slug, content_type='application/json', data=json.dumps(new_data), **self.auth_headers)
-
-        self.assertEqual(response.status_code, 202)
-        body = json.loads(response.content)
-        self.assertEqual(len(body['objects']), 2)
-
-        # Refresh
-        self.dataset = Dataset.objects.get(id=self.dataset.id)
-
-        self.assertEqual(self.dataset.row_count, 4)
-
-    def test_updated_search(self):
-        self.dataset.import_data(self.user, self.upload, 0)
-
-        utils.wait()
 
         update_data = {
             'dataset': '/api/1.0/dataset/%s/' % self.dataset.slug,
@@ -356,8 +311,6 @@ class TestAPIData(TransactionTestCase):
     def test_delete(self):
         self.dataset.import_data(self.user, self.upload, 0)
 
-        utils.wait()
-
         response = self.client.get('/api/1.0/dataset/%s/data/' % self.dataset.slug, **self.auth_headers)
 
         self.assertEqual(response.status_code, 200)
@@ -377,8 +330,6 @@ class TestAPIData(TransactionTestCase):
     def test_delete_list(self):
         self.dataset.import_data(self.user, self.upload, 0)
 
-        utils.wait()
-
         response = self.client.delete('/api/1.0/dataset/%s/data/' % self.dataset.slug, **self.auth_headers)
 
         self.assertEqual(response.status_code, 204)
@@ -390,8 +341,6 @@ class TestAPIData(TransactionTestCase):
 
     def test_deleted_search(self):
         self.dataset.import_data(self.user, self.upload, 0)
-
-        utils.wait()
 
         response = self.client.get('/api/1.0/dataset/%s/data/' % self.dataset.slug, **self.auth_headers)
 
@@ -428,16 +377,12 @@ class TestAPIData(TransactionTestCase):
     def test_search(self):
         self.dataset.import_data(self.user, self.upload, 0)
 
-        utils.wait()
-
         # Import second dataset so we can make sure both match 
         second_dataset = Dataset.objects.create(
             name='Second dataset',
             creator=self.dataset.creator)
 
         second_dataset.import_data(self.user, self.upload, 0)
-
-        utils.wait()
 
         response = self.client.get('/api/1.0/data/?q=Christopher', **self.auth_headers)
 
@@ -458,16 +403,18 @@ class TestAPIData(TransactionTestCase):
             
             self.assertEqual(result_dataset['name'], db_dataset.name)
             self.assertEqual(result_dataset['row_count'], db_dataset.row_count)
-            self.assertEqual(result_dataset['columns'], db_dataset.columns)
+            self.assertEqual(result_dataset['column_schema'], db_dataset.column_schema)
 
             self.assertEqual(result_dataset['objects'][0]['data'][1], 'Christopher')
             self.assertIn('resource_uri', result_dataset['objects'][0])
             self.assertIn('external_id', result_dataset['objects'][0])
 
-    def test_search_meta(self):
-        self.dataset.import_data(self.user, self.upload, 0)
+    def test_search_category(self):
+        category = Category.objects.get(slug='politics')
 
-        utils.wait()
+        self.dataset.import_data(self.user, self.upload, 0)
+        self.dataset = Dataset.objects.get(id=self.dataset.id)
+        category.datasets.add(self.dataset)
 
         # Import second dataset so we can make sure both match 
         second_dataset = Dataset.objects.create(
@@ -476,7 +423,117 @@ class TestAPIData(TransactionTestCase):
 
         second_dataset.import_data(self.user, self.upload, 0)
 
-        utils.wait()
+        response = self.client.get('/api/1.0/data/?q=Christopher&category=politics', **self.auth_headers)
+
+        self.assertEqual(response.status_code, 200)
+
+        body = json.loads(response.content)
+
+        # Verify that the group count is correct
+        self.assertEqual(body['meta']['total_count'], 1)
+        self.assertEqual(len(body['objects']), 1)
+
+        # Verify that each matched dataset includes one result
+        result_dataset = body['objects'][0]
+        self.assertEqual(result_dataset['meta']['total_count'], 1)
+        self.assertEqual(len(result_dataset['objects']), 1)
+
+        self.assertEqual(result_dataset['name'], self.dataset.name)
+        self.assertEqual(result_dataset['row_count'], self.dataset.row_count)
+        self.assertEqual(result_dataset['column_schema'], self.dataset.column_schema)
+
+        self.assertEqual(result_dataset['objects'][0]['data'][1], 'Christopher')
+        self.assertIn('resource_uri', result_dataset['objects'][0])
+        self.assertIn('external_id', result_dataset['objects'][0])
+
+    def test_search_since(self):
+        self.dataset.import_data(self.user, self.upload, 0)
+
+        # Import second dataset so we can make sure only one matches 
+        second_dataset = Dataset.objects.create(
+            name='Second dataset',
+            creator=self.dataset.creator)
+
+        second_dataset.import_data(self.user, self.upload, 0)
+
+        sleep(1)
+        between_time = now().replace(microsecond=0, tzinfo=None)
+        between_time = between_time.isoformat('T') 
+        
+        # Import second dataset twice, to verify only one is matched
+        second_dataset.import_data(self.user, self.upload, 0)
+
+        response = self.client.get('/api/1.0/data/?q=Christopher&since=%s' % between_time, **self.auth_headers)
+
+        self.assertEqual(response.status_code, 200)
+
+        body = json.loads(response.content)
+
+        # Verify that the group count is correct
+        self.assertEqual(body['meta']['total_count'], 1)
+        self.assertEqual(len(body['objects']), 1)
+
+        # Verify that each matched dataset includes one result
+        result_dataset = body['objects'][0]
+        self.assertEqual(result_dataset['meta']['total_count'], 1)
+        self.assertEqual(len(result_dataset['objects']), 1)
+
+    def test_search_stale_dataset(self):
+        self.dataset.import_data(self.user, self.upload, 0)
+        self.dataset.update_full_text()
+
+        # Import second dataset so we can make sure both match 
+        second_dataset = Dataset.objects.create(
+            name='Second dataset',
+            creator=self.dataset.creator)
+
+        second_dataset.import_data(self.user, self.upload, 0)
+        second_dataset.update_full_text()
+
+        # Manually delete second dataset to simulate an integrity issue
+        from django.db import connection, transaction
+        cursor = connection.cursor()
+
+        cursor.execute("DELETE FROM panda_dataset WHERE slug='%s'" % second_dataset.slug)
+        transaction.commit_unless_managed()
+
+        # Verify Solr data still exists
+        self.assertEqual(solr.query(settings.SOLR_DATA_CORE, 'dataset_slug:%s' % self.dataset.slug)['response']['numFound'], 4)
+        self.assertEqual(solr.query(settings.SOLR_DATA_CORE, 'dataset_slug:%s' % second_dataset.slug)['response']['numFound'], 4)
+        self.assertEqual(solr.query(settings.SOLR_DATASETS_CORE, 'slug:%s' % self.dataset.slug)['response']['numFound'], 1)
+        self.assertEqual(solr.query(settings.SOLR_DATASETS_CORE, 'slug:%s' % second_dataset.slug)['response']['numFound'], 1)
+
+        # Execute search, which should invoke purge as a side-effect
+        response = self.client.get('/api/1.0/data/?q=Christopher', **self.auth_headers)
+        self.assertEqual(response.status_code, 200)
+
+        # Verify Solr data has been purged
+        self.assertEqual(solr.query(settings.SOLR_DATA_CORE, 'dataset_slug:%s' % self.dataset.slug)['response']['numFound'], 4)
+        self.assertEqual(solr.query(settings.SOLR_DATA_CORE, 'dataset_slug:%s' % second_dataset.slug)['response']['numFound'], 0)
+        self.assertEqual(solr.query(settings.SOLR_DATASETS_CORE, 'slug:%s' % self.dataset.slug)['response']['numFound'], 1)
+        self.assertEqual(solr.query(settings.SOLR_DATASETS_CORE, 'slug:%s' % second_dataset.slug)['response']['numFound'], 0)
+
+        body = json.loads(response.content)
+
+        # Verify that the group count is correct
+        self.assertEqual(body['meta']['total_count'], 1)
+        self.assertEqual(len(body['objects']), 1)
+
+        # Verify that each matched dataset includes one result
+        result_dataset = body['objects'][0]
+        self.assertEqual(result_dataset['slug'], self.dataset.slug)
+        self.assertEqual(result_dataset['meta']['total_count'], 1)
+        self.assertEqual(len(result_dataset['objects']), 1)
+
+    def test_search_meta(self):
+        self.dataset.import_data(self.user, self.upload, 0)
+
+        # Import second dataset so we can make sure both match 
+        second_dataset = Dataset.objects.create(
+            name='Second dataset',
+            creator=self.dataset.creator)
+
+        second_dataset.import_data(self.user, self.upload, 0)
 
         response = self.client.get('/api/1.0/data/?q=Ryan&limit=1', **self.auth_headers)
 
@@ -495,8 +552,6 @@ class TestAPIData(TransactionTestCase):
     def test_search_boolean_query(self):
         self.dataset.import_data(self.user, self.upload, 0)
 
-        utils.wait()
-        
         response = self.client.get('/api/1.0/data/?q=Brian+and+Tribune', **self.auth_headers)
 
         self.assertEqual(response.status_code, 200)
@@ -510,4 +565,12 @@ class TestAPIData(TransactionTestCase):
         response = self.client.get('/api/1.0/data/?q=Christopher')
 
         self.assertEqual(response.status_code, 401)   
+
+    def test_export_data(self):
+        self.dataset.import_data(self.user, self.upload, 0)
+
+        response = self.client.get('/api/1.0/data/?q=joseph&export=true', **self.auth_headers)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, '"Export queued."')
 

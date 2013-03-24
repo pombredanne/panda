@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import datetime
 import os
 
 import django
@@ -41,7 +42,7 @@ DATABASES = {
 }
 
 TIME_ZONE = 'Etc/UTC' 
-USE_TZ = False 
+USE_TZ = True 
 
 LANGUAGE_CODE = 'en-us'
 USE_I18N = True
@@ -74,14 +75,18 @@ TEMPLATE_LOADERS = (
 
 TEMPLATE_CONTEXT_PROCESSORS = (
     'django.core.context_processors.media',
-    'django.contrib.auth.context_processors.auth'
+    'django.contrib.auth.context_processors.auth',
+    'django.contrib.messages.context_processors.messages',
+    'django.core.context_processors.csrf'
 )
 
 MIDDLEWARE_CLASSES = (
     'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware'
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'panda.middleware.CsrfCookieUsedMiddleware'
 )
 
 ROOT_URLCONF = 'config.urls'
@@ -107,26 +112,48 @@ INSTALLED_APPS = (
     'compressor',
     'livesettings',
 
+    'jumpstart',
     'panda',
     'client'
 )
 
+SESSION_COOKIE_AGE = 2592000    # 30 days
+
 AUTH_PROFILE_MODULE = 'panda.UserProfile'
 
 # Django-compressor
-COMPRESS_ENABLED = True 
+COMPRESS_ENABLED = False 
 
 # Celery
 import djcelery
 djcelery.setup_loader()
 
-BROKER_TRANSPORT = "sqlakombu.transport.Transport"
-BROKER_HOST = "postgresql://panda@localhost/panda?user=panda&password=panda"
-CELERY_RESULT_DBURI = "postgresql://panda@localhost/panda?user=panda&password=panda"
+BROKER_TRANSPORT = 'sqlalchemy'
+BROKER_URL = 'postgresql://%(USER)s:%(PASSWORD)s@%(HOST)s/%(NAME)s' % DATABASES['default']
+CELERY_RESULT_DBURI = 'postgresql://%(USER)s:%(PASSWORD)s@%(HOST)s/%(NAME)s' % DATABASES['default'] 
 CELERYD_HIJACK_ROOT_LOGGER = False
 CELERYD_CONCURRENCY = 1
 CELERY_IGNORE_RESULT = True
 CELERY_STORE_ERRORS_EVEN_IF_IGNORED = True
+CELERYBEAT_SCHEDULE_FILENAME = 'celerybeat-schedule'
+
+from celery.schedules import crontab
+
+CELERYBEAT_SCHEDULE = {
+    'purge_orphaned_uploads': {
+        'task': 'panda.tasks.cron.purge_orphaned_uploads',
+        'schedule': crontab(minute=0, hour=2),
+        'kwargs': { 'fake': False }
+    },
+    'run_subscriptions': {
+        'task': 'panda.tasks.cron.run_subscriptions',
+        'schedule': crontab(minute=30, hour=2)
+    },
+    'run_admin_alerts': {
+        'task': 'panda.tasks.cron.run_admin_alerts',
+        'schedule': crontab(minute=0, hour=4)
+    }
+}
 
 # South
 SOUTH_TESTS_MIGRATE = False
@@ -208,15 +235,20 @@ LOGGING = {
 SOLR_ENDPOINT = 'http://localhost:8983/solr'
 SOLR_DATA_CORE = 'data'
 SOLR_DATASETS_CORE = 'datasets'
+SOLR_DIRECTORY = '/var/solr'
 
 # Miscellaneous configuration
-PANDA_VERSION = '0.1.1'
+PANDA_VERSION = '1.0.3'
 PANDA_DEFAULT_SEARCH_GROUPS = 10
 PANDA_DEFAULT_SEARCH_ROWS_PER_GROUP = 5
 PANDA_DEFAULT_SEARCH_ROWS = 50
 PANDA_SNIFFER_MAX_SAMPLE_SIZE = 1024 * 100  # 100kb
 PANDA_SAMPLE_DATA_ROWS = 5
 PANDA_SCHEMA_SAMPLE_ROWS = 100
+PANDA_ACTIVATION_PERIOD = datetime.timedelta(days=30)
+PANDA_AVAILABLE_SPACE_WARN = 1024 * 1024 * 1024 * 2 # 2GB
+PANDA_AVAILABLE_SPACE_CRITICAL = 1024 * 1024 * 1024 * 1 # 1GB
+PANDA_NOTIFICATIONS_TO_SHOW = 50
 
 PANDA_UNCATEGORIZED_ID = 0
 PANDA_UNCATEGORIZED_SLUG = 'uncategorized'

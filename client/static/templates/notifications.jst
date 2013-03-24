@@ -1,0 +1,14 @@
+<div id="notifications" class="row-fluid">
+    <div class="span12">
+        <%= pager %>
+
+        <ul>
+        <% _.each(notifications, function(note) { %>
+            <li><a href="<%= note.url %>" class="notification" data-notification-id="<%= note.id %>"><%= unescape(note.message) %></a> (<%= moment(note.sent_at, "YYYY-MM-DDTHH:mm:ss").toLocalTimezone().fromNow() %>)</li>
+        <% }); %> 
+        </ul>
+
+        <%= pager %>
+    </div>
+</div>
+

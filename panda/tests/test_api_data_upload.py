@@ -11,7 +11,7 @@ from panda.models import DataUpload
 from panda.tests import utils
 
 class TestAPIDataUpload(TransactionTestCase):
-    fixtures = ['init_panda.json']
+    fixtures = ['init_panda.json', 'test_users.json']
 
     def setUp(self):
         self.user = utils.get_panda_user()
@@ -109,12 +109,16 @@ class TestAPIDataUpload(TransactionTestCase):
         self.assertEqual(response.status_code, 200)
 
         body = json.loads(response.content)
-        
+
         self.assertEqual(body['success'], False)
         self.assertEqual(body['forbidden'], True)
 
     def test_delete(self):
+        path = self.upload.get_path()
+        self.assertEqual(os.path.isfile(path), True)
+
         response = self.client.delete('/api/1.0/data_upload/%i/' % self.upload.id, **self.auth_headers)
 
         self.assertEqual(response.status_code, 204)
+        self.assertEqual(os.path.exists(path), False)
 

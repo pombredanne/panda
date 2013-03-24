@@ -1,27 +1,49 @@
 PANDA.routers.Index = Backbone.Router.extend({
     routes: {
-        "activate/:activation_key":                     "activate",
-        "login":                                        "login",
-        "logout":                                       "logout",
-        "":                                             "search",
-        "search/:query":                                "search",
-        "search/:query/:limit":                         "search",
-        "search/:query/:limit/:page":                   "search",
-        "upload":                                       "data_upload",
-        "dataset/:dataset_slug/upload":                 "data_upload",
-        "datasets":                                     "datasets_search",
-        "datasets/:query":                              "datasets_search",
-        "datasets/:query/:limit":                       "datasets_search",
-        "datasets/:query/:limit/:page":                 "datasets_search",
-        "category/:slug":                               "category",
-        "category/:slug/:query":                        "category",
-        "category/:slug/:query/:limit":                 "category",
-        "category/:slug/:query/:limit/:page":           "category",
-        "dataset/:slug":                                "dataset_view",
-        "dataset/:slug/search/:query":                  "dataset_search",
-        "dataset/:slug/search/:query/:limit":           "dataset_search",
-        "dataset/:slug/search/:query/:limit/:page":     "dataset_search",
-        "*path":                                        "not_found"
+        "activate/:activation_key":                         "activate",
+        "reset\-password/:activation_key":                   "reset_password",
+        "login":                                            "login",
+        "logout":                                           "logout",
+        "":                                                 "search",
+        "search":                                           "search",
+        "search/:category":                                 "search",
+        "search/:category/:query":                          "search",
+        "search/:category/:query/:since":                   "search",
+        "search/:category/:query/:since/:limit":            "search",
+        "search/:category/:query/:since/:limit/:page":      "search",
+        "upload":                                           "data_upload",
+        "dataset/:dataset_slug/upload":                     "data_upload",
+        "datasets/:category":                               "datasets_search",
+        "datasets/:category/:query":                        "datasets_search",
+        "datasets/:category/:query/:limit":                 "datasets_search",
+        "datasets/:category/:query/:limit/:page":           "datasets_search",
+        "dataset/:slug":                                    "dataset_view",
+        "dataset/:slug/search/:query":                      "dataset_search",
+        "dataset/:slug/search/:query/:since":               "dataset_search",
+        "dataset/:slug/search/:query/:since/:limit":        "dataset_search",
+        "dataset/:slug/search/:query/:since/:limit/:page":  "dataset_search",
+        "notifications":                                    "notifications",
+        "notifications/:limit":                             "notifications",
+        "notifications/:limit/:page":                       "notifications",
+        "user/:id":                                         "user",
+        "dashboard":                                        "dashboard",
+        "welcome":                                          "welcome",
+        "export/:id":                                       "fetch_export",
+        "*path":                                            "not_found"
+    },
+
+    _fffix: function(param) {
+        /*
+         * The latest FF encodes urls in a non-standard way, as documented
+         * in these Backbone tickets:
+         * https://github.com/documentcloud/backbone/pull/1156
+         * https://github.com/documentcloud/backbone/pull/1219
+         */
+        if ($.browser.mozilla) {
+            return param.replace("%20", " ");
+        } else {
+            return param;
+        }
     },
 
     initialize: function(options) {
@@ -32,6 +54,10 @@ PANDA.routers.Index = Backbone.Router.extend({
         this.controller.goto_activate(activation_key);
     },
 
+    reset_password: function(activation_key) {
+        this.controller.goto_reset_password(activation_key);
+    },
+
     login: function() {
         this.controller.goto_login();
     },
@@ -40,28 +66,44 @@ PANDA.routers.Index = Backbone.Router.extend({
         this.controller.goto_logout();
     },
 
-    search: function(query, limit, page) {
-        this.controller.goto_search(query, limit, page);
+    search: function(category, query, since, limit, page) {
+        this.controller.goto_search(category, this._fffix(query), since, limit, page);
     },
 
     data_upload: function(dataset_slug) {
         this.controller.goto_data_upload(dataset_slug);
     },
 
-    datasets_search: function(query, limit, page) {
-        this.controller.goto_datasets_search(null, query, limit, page);
-    },
-
-    category: function(slug, query, limit, page) {
-        this.controller.goto_datasets_search(slug, query, limit, page);
+    datasets_search: function(category, query, limit, page) {
+        this.controller.goto_datasets_search(category, this._fffix(query), limit, page);
     },
 
     dataset_view: function(slug) {
         this.controller.goto_dataset_view(slug);
     },
 
-    dataset_search: function(slug, query, limit, page) {
-        this.controller.goto_dataset_search(slug, query, limit, page);
+    dataset_search: function(slug, query, since, limit, page) {
+        this.controller.goto_dataset_search(slug, this._fffix(query), since, limit, page);
+    },
+    
+    notifications: function(limit, page) {
+        this.controller.goto_notifications(limit, page);
+    },
+
+    user: function(id) {
+        this.controller.goto_user(id);
+    },
+
+    dashboard: function() {
+        this.controller.goto_dashboard();
+    },
+
+    welcome: function() {
+        this.controller.goto_welcome();
+    },
+
+    fetch_export: function(id) {
+        this.controller.goto_fetch_export(id);
     },
 
     not_found: function(path) {
