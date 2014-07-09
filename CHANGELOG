@@ -1,7 +1,34 @@
-1.0.3
+1.1.2
 -----
 
 
+
+1.1.1
+-----
+
+* Fix subscription results not displaying. (#915)
+* Update documentated server cost estimate. (#911)
+* Fix broken subject line in new user email. (#913)
+* Fix errant "%20"s in search box in Firefox. (#916)
+* Fix bug in volume and solr index migration scripts. (#922)
+* Revise and document manual upload/import process for large files (#929)
+* Enable German, Italian and Spanish translations (#923, #924, #926)
+* Fix admin login form enforcing 30 char username limit. (#931)
+* Add de, es and it translators to AUTHORS file.
+
+1.1.0
+-----
+
+* Add getting started guide to home page. (#901)
+* Implement demo mode. (#902)
+* Fix default search operator in global search. (#877)
+* Enable column sort in API. (#876)
+* Add Jennifer Wilson to AUTHORS.
+* Add Daniel Lathrop to AUTHORS.
+* Fix url parsing issue breaking Firefox. (#870)
+* Update to Django 1.4.8. (#882)
+* Integrate German (DE) translation. (#865)
+* Implement translation (i18n) support. (#861, etc.)
 
 1.0.2
 -----
@@ -15,6 +42,7 @@
 * Fix unescaped names in subscription dialogs. (#858)
 
 1.0.1
+
 -----
 
 * Improve security implemention to prevent API key theft. (#201)

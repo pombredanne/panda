@@ -8,6 +8,7 @@ import time
 from django.conf import settings
 from django.shortcuts import render_to_response
 from django.template import RequestContext
+from django.utils.translation import ugettext as _
 from pytz import common_timezones
 from tastypie.models import ApiKey
 
@@ -33,12 +34,19 @@ class RestartDaemon(Daemon):
 def jumpstart(request):
     context = RequestContext(request, {
         'settings': settings,
+        'languages': (
+            ('en', _('English')),
+            ('de', _('German')),
+            ('es', _('Spanish')),
+            ('it', _('Italian'))
+        ),
         'timezones': common_timezones
     })
 
     return render_to_response('jumpstart/index.html', context)
 
 def wait(request):
+    language = request.POST.get('language', 'en')
     timezone = request.POST['timezone']
     email = request.POST['email']
     password = request.POST['password']
@@ -51,6 +59,7 @@ def wait(request):
     wsgi_wrapper_path = wsgi_wrapper.__module__ if wsgi_wrapper else None
 
     with open(LOCAL_SETTINGS_PATH, 'w') as f:
+        f.write("LANGUAGE_CODE = '%s'\n" % language)
         f.write("TIME_ZONE = '%s'\n" % timezone)
 
         f.write("SECRET_KEY = '%s'\n" % secret_key)
